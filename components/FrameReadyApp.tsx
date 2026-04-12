@@ -471,7 +471,7 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
   const renderHome = () => (
     <div className={theme.heroPage}>
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center pb-10">
-        <img src="/FrameReady logo_Flat_GraphicOnly.png" alt="FrameReady logo" className="mb-4 w-20 cursor-pointer" onClick={() => navigateTo("home")} />
+        <img src="/frameready-logo.png" alt="FrameReady logo" className="mb-4 w-20 cursor-pointer" onClick={() => navigateTo("home")} />
         <h1 className="mb-2 text-4xl font-bold">FrameReady</h1>
         <p className={`mb-4 max-w-md ${theme.mutedText}`}>
           <span className="font-semibold text-white">Professional Artwork QC & Formatting for Streaming Platforms.</span>
@@ -570,7 +570,7 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
         <div className="mx-auto max-w-6xl">
           <div className="mb-8 flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <img src="/FrameReady logo_Flat_GraphicOnly.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} />
+              <img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} />
               <div>
                 <p className={`text-xs uppercase tracking-[0.22em] ${theme.accentLine}`}>Premium artwork delivery</p>
                 <h1 className="text-2xl font-semibold">Build your delivery-ready artwork package</h1>
@@ -778,7 +778,7 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
         <div className="mx-auto max-w-6xl">
           <div className="mb-8 flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <img src="/FrameReady logo_Flat_GraphicOnly.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} />
+              <img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} />
               <div>
                 <p className={`text-xs uppercase tracking-[0.22em] ${theme.accentLine}`}>Final step</p>
                 <h1 className="text-2xl font-semibold">Upload your artwork</h1>
@@ -897,7 +897,7 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
   const renderAdminAuth = () => (
     <div className={`min-h-screen p-6 ${theme.page}`}>
       <div className="mx-auto max-w-md pt-10">
-        <div className="mb-8 flex items-center justify-center"><img src="/FrameReady logo_Flat_GraphicOnly.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /></div>
+        <div className="mb-8 flex items-center justify-center"><img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /></div>
         <div className={`rounded-2xl p-6 ${theme.panelStrong}`}>
           <p className={`mb-2 text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Admin access</p>
           <h1 className="mb-3 text-2xl font-semibold">Sign in to Admin</h1>
@@ -917,7 +917,7 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
     <div className={`min-h-screen p-6 ${theme.page}`}>
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4"><img src="/FrameReady logo_Flat_GraphicOnly.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /><div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Operations</p><h1 className="text-2xl font-semibold">Admin Dashboard</h1></div></div>
+          <div className="flex items-center gap-4"><img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /><div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Operations</p><h1 className="text-2xl font-semibold">Admin Dashboard</h1></div></div>
           <div className="flex items-center gap-4"><button onClick={() => navigateTo("dashboard")} className="text-sm underline text-slate-300 hover:text-white">Back to Dashboard</button><button onClick={handleAdminLogout} className="text-sm underline text-slate-300 hover:text-white">Log out</button></div>
         </div>
 
