@@ -253,7 +253,11 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminAuthError, setAdminAuthError] = useState("");
-
+const [clientName, setClientName] = useState("");
+const [clientEmail, setClientEmail] = useState("");
+const [clientNotes, setClientNotes] = useState("");
+const [checkoutError, setCheckoutError] = useState("");
+const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const selectedPackageData = packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
 
   const totalPrice = useMemo(
@@ -467,7 +471,136 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
     setAdminPassword("");
     navigateTo("home");
   };
+const localizedSelectionIsValid =
+  !selectedAddOns.includes("localized") ||
+  (localizedLanguages.length > 0 &&
+    localizedLanguages.every(
+      (language) => (localizedTitles[language] || "").trim().length > 0
+    ));
 
+const canProceedToCheckout =
+  files.length > 0 &&
+  clientName.trim().length > 0 &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim()) &&
+  localizedSelectionIsValid;
+
+const uploadFilesToStorage = async (
+  uploadFiles: File[],
+  kind: "artwork" | "font"
+) => {
+  if (!uploadFiles.length) return [];
+
+  const formData = new FormData();
+  formData.append("kind", kind);
+
+  for (const file of uploadFiles) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const json = await response.json();
+
+  if (!response.ok) {
+    throw new Error(json?.error || "Failed to upload files.");
+  }
+
+  return json.files ?? [];
+};
+
+const handleProceedToPayment = async () => {
+  if (!files.length) {
+    setCheckoutError("Upload artwork before continuing to payment.");
+    return;
+  }
+
+  if (!clientName.trim()) {
+    setCheckoutError("Enter the client name before continuing to payment.");
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim())) {
+    setCheckoutError("Enter a valid client email before continuing to payment.");
+    return;
+  }
+
+  if (selectedAddOns.includes("localized") && localizedLanguages.length === 0) {
+    setCheckoutError(
+      "Select at least one localised language before continuing to payment."
+    );
+    return;
+  }
+
+  if (selectedAddOns.includes("localized")) {
+    const missingLanguage = localizedLanguages.find(
+      (language) => !(localizedTitles[language] || "").trim()
+    );
+
+    if (missingLanguage) {
+      setCheckoutError(
+        `Enter the translated title for ${missingLanguage} before continuing to payment.`
+      );
+      return;
+    }
+  }
+
+  try {
+    setCheckoutError("");
+    setIsSubmittingCheckout(true);
+
+    const uploadedArtworkFiles = await uploadFilesToStorage(files, "artwork");
+    const uploadedFontFiles = await uploadFilesToStorage(packageFontFiles, "font");
+
+    const orderRes = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientName: clientName.trim(),
+        clientEmail: clientEmail.trim(),
+        notes: clientNotes.trim(),
+        packageId: selectedPackage,
+        addOnIds: selectedAddOns,
+        localizedLanguages,
+        localizedTitles,
+        localizedRegionGuidelines,
+        packageFontInfo,
+        uploadedFiles: uploadedArtworkFiles,
+        uploadedFontFiles,
+      }),
+    });
+
+    const orderJson = await orderRes.json();
+
+    if (!orderRes.ok) {
+      throw new Error(orderJson?.error || "Failed to create order.");
+    }
+
+    const checkoutRes = await fetch("/api/create-checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId: orderJson?.order?.id }),
+    });
+
+    const checkoutJson = await checkoutRes.json();
+
+    if (!checkoutRes.ok || !checkoutJson?.url) {
+      throw new Error(
+        checkoutJson?.error || "Failed to create checkout session."
+      );
+    }
+
+    window.location.href = checkoutJson.url;
+  } catch (error) {
+    setCheckoutError(
+      error instanceof Error ? error.message : "Unable to continue to payment."
+    );
+  } finally {
+    setIsSubmittingCheckout(false);
+  }
+};
   const renderHome = () => (
     <div className={theme.heroPage}>
       <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center pb-10">
@@ -724,7 +857,51 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
             </div>
 
             <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
-              <div className={`rounded-3xl p-6 ${theme.panelStrong}`}>
+  <div className={`rounded-3xl p-6 ${theme.panel}`}>
+    <p className={`mb-2 text-[11px] font-medium uppercase tracking-[0.22em] ${theme.accentLine}`}>
+      Client details
+    </p>
+    <h2 className="text-xl font-semibold">Who should we deliver to?</h2>
+    <p className={`mt-2 text-sm ${theme.mutedText}`}>
+      Add the client contact details so the order can be created and tied to checkout.
+    </p>
+
+    <div className="mt-5 space-y-4">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-white">Client name</label>
+        <input
+          type="text"
+          value={clientName}
+          onChange={(e) => setClientName(e.target.value)}
+          placeholder="Full name or company name"
+          className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-white">Client email</label>
+        <input
+          type="email"
+          value={clientEmail}
+          onChange={(e) => setClientEmail(e.target.value)}
+          placeholder="name@email.com"
+          className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-white">Project notes (optional)</label>
+        <textarea
+          value={clientNotes}
+          onChange={(e) => setClientNotes(e.target.value)}
+          placeholder="Anything we should know before we begin"
+          className={`min-h-[96px] w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+        />
+      </div>
+    </div>
+  </div>
+
+  <div className={`rounded-3xl p-6 ${theme.panelStrong}`}>
                 <p className={`mb-2 text-[11px] font-medium uppercase tracking-[0.22em] ${theme.accentLine}`}>Live summary</p>
                 <h2 className="text-xl font-semibold">Your package</h2>
                 <p className={`mt-2 text-sm ${theme.mutedText}`}>Everything below updates live as you build your order.</p>
@@ -856,6 +1033,57 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
 
             <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
               <div className={`rounded-3xl p-6 ${theme.panelStrong}`}>
+                <div className={`rounded-3xl p-6 ${theme.panel}`}>
+  <p className={`mb-2 text-[11px] font-medium uppercase tracking-[0.22em] ${theme.accentLine}`}>
+    Client details
+  </p>
+
+  <h2 className="text-xl font-semibold">Who should we deliver to?</h2>
+
+  <p className={`mt-2 text-sm ${theme.mutedText}`}>
+    Add the client contact details so we can process and deliver your order.
+  </p>
+
+  <div className="mt-5 space-y-4">
+    <div>
+      <label className="mb-1 block text-xs font-medium text-white">
+        Client name
+      </label>
+      <input
+        type="text"
+        value={clientName}
+        onChange={(e) => setClientName(e.target.value)}
+        placeholder="Full name or company"
+        className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+      />
+    </div>
+
+    <div>
+      <label className="mb-1 block text-xs font-medium text-white">
+        Client email
+      </label>
+      <input
+        type="email"
+        value={clientEmail}
+        onChange={(e) => setClientEmail(e.target.value)}
+        placeholder="name@email.com"
+        className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+      />
+    </div>
+
+    <div>
+      <label className="mb-1 block text-xs font-medium text-white">
+        Notes (optional)
+      </label>
+      <textarea
+        value={clientNotes}
+        onChange={(e) => setClientNotes(e.target.value)}
+        placeholder="Anything we should know"
+        className={`min-h-[90px] w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+      />
+    </div>
+  </div>
+</div>
                 <p className={`mb-2 text-[11px] font-medium uppercase tracking-[0.22em] ${theme.accentLine}`}>Order summary</p>
                 <h2 className="text-xl font-semibold">Ready to submit</h2>
                 <p className={`mt-2 text-sm ${theme.mutedText}`}>Review your order before checkout. Your files and selections will be attached to this package.</p>
@@ -874,18 +1102,44 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
                 <div className="mt-5"><p className="mb-3 text-sm font-semibold text-white">Files added</p><div className={`rounded-2xl p-4 ${theme.panel}`}><p className="text-2xl font-bold text-white">{files.length}</p><p className={`mt-1 text-sm ${theme.mutedText}`}>file{files.length !== 1 ? "s" : ""} uploaded</p></div></div>
                 <div className="mt-6 border-t border-white/10 pt-4 flex items-center justify-between"><span className="text-base font-semibold text-white">Total</span><span className="text-2xl font-bold text-white">{formatUsd(totalPrice)}</span></div>
                 <div className="mt-6">
-                  <button
-                    className={`w-full rounded-xl py-3 ${theme.buttonPrimary}`}
-                    disabled={files.length === 0}
-                  >
-                    {files.length === 0 ? "Upload artwork to continue" : "Proceed to Payment"}
-                  </button>
-                  {files.length === 0 && (
-                    <p className={`mt-2 text-center text-xs ${theme.mutedText}`}>
-                      You must upload artwork before continuing to payment.
-                    </p>
-                  )}
-                </div>
+  <button
+    onClick={handleProceedToPayment}
+    className={`w-full rounded-xl py-3 ${theme.buttonPrimary}`}
+    disabled={!canProceedToCheckout || isSubmittingCheckout}
+  >
+    {isSubmittingCheckout
+      ? "Uploading files and redirecting..."
+      : !files.length
+      ? "Upload artwork to continue"
+      : "Proceed to Payment"}
+  </button>
+
+  {!files.length && (
+    <p className={`mt-2 text-center text-xs ${theme.mutedText}`}>
+      You must upload artwork before continuing to payment.
+    </p>
+  )}
+
+  {files.length > 0 && !clientName.trim() && (
+    <p className={`mt-2 text-center text-xs ${theme.mutedText}`}>
+      Add the client name before continuing.
+    </p>
+  )}
+
+  {files.length > 0 &&
+    clientName.trim() &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim()) && (
+      <p className={`mt-2 text-center text-xs ${theme.mutedText}`}>
+        Add a valid client email before continuing.
+      </p>
+    )}
+
+  {checkoutError && (
+    <div className={`mt-3 rounded-xl p-3 text-sm ${theme.errorPanel}`}>
+      {checkoutError}
+    </div>
+  )}
+</div>
               </div>
             </div>
           </div>
