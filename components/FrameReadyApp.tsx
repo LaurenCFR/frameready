@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type View = "home" | "dashboard" | "upload" | "admin";
 
@@ -246,7 +246,9 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
   const [files, setFiles] = useState<File[]>([]);
   const [fileMessages, setFileMessages] = useState<FileMessage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>(initialAdminOrders);
+  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
+const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
+const [adminOrdersError, setAdminOrdersError] = useState("");
   const [adminFilter, setAdminFilter] = useState("All");
   const [selectedAdminOrderId, setSelectedAdminOrderId] = useState("FR-1001");
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(initialView !== "admin");
@@ -259,6 +261,45 @@ const [clientNotes, setClientNotes] = useState("");
 const [checkoutError, setCheckoutError] = useState("");
 const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const selectedPackageData = packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
+
+  const loadAdminOrders = async () => {
+  try {
+    setAdminOrdersLoading(true);
+    setAdminOrdersError("");
+    useEffect(() => {
+  if (view === "admin" && isAdminAuthenticated) {
+    void loadAdminOrders();
+  }
+}, [view, isAdminAuthenticated]);
+
+    const response = await fetch("/api/admin/orders", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      throw new Error(json?.error || "Failed to load admin orders.");
+    }
+
+    setAdminOrders(json.orders || []);
+
+    if (json.orders?.length > 0) {
+      setSelectedAdminOrderId((current) =>
+        current && json.orders.some((order: AdminOrder) => order.id === current)
+          ? current
+          : json.orders[0].id
+      );
+    }
+  } catch (error) {
+    setAdminOrdersError(
+      error instanceof Error ? error.message : "Unable to load admin orders."
+    );
+  } finally {
+    setAdminOrdersLoading(false);
+  }
+};
 
   const totalPrice = useMemo(
     () => calculateTotal(selectedPackage, selectedAddOns, localizedLanguageCount),
@@ -291,11 +332,13 @@ const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const selectedAdminOrder = adminOrders.find((order) => order.id === selectedAdminOrderId) ?? adminOrders[0];
 
   const adminSummary = {
-    total: adminOrders.length,
-    active: adminOrders.filter((order) => ["Files Received", "In Progress", "Ready for Delivery"].includes(order.status)).length,
-    ready: adminOrders.filter((order) => order.status === "Ready for Delivery").length,
-    delivered: adminOrders.filter((order) => order.status === "Completed").length,
-  };
+  total: adminOrders.length,
+  active: adminOrders.filter((order) =>
+    ["Paid", "Files Received", "In Progress", "Ready for Delivery"].includes(order.status)
+  ).length,
+  ready: adminOrders.filter((order) => order.status === "Ready for Delivery").length,
+  delivered: adminOrders.filter((order) => order.status === "Completed").length,
+};
 
   const navigateTo = (nextView: View) => {
     setView(nextView);
@@ -1172,7 +1215,26 @@ const handleProceedToPayment = async () => {
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4"><img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /><div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Operations</p><h1 className="text-2xl font-semibold">Admin Dashboard</h1></div></div>
-          <div className="flex items-center gap-4"><button onClick={() => navigateTo("dashboard")} className="text-sm underline text-slate-300 hover:text-white">Back to Dashboard</button><button onClick={handleAdminLogout} className="text-sm underline text-slate-300 hover:text-white">Log out</button></div>
+          <div className="flex items-center gap-4">
+  <button
+    onClick={() => void loadAdminOrders()}
+    className={theme.buttonSecondary}
+  >
+    Refresh Orders
+  </button>
+  <button
+    onClick={() => navigateTo("dashboard")}
+    className="text-sm underline text-slate-300 hover:text-white"
+  >
+    Back to Dashboard
+  </button>
+  <button
+    onClick={handleAdminLogout}
+    className="text-sm underline text-slate-300 hover:text-white"
+  >
+    Log out
+  </button>
+</div>
         </div>
 
         <div className="mb-8 grid gap-4 md:grid-cols-4">
@@ -1190,21 +1252,82 @@ const handleProceedToPayment = async () => {
             </div>
 
             <div className="space-y-3">
-              {filteredAdminOrders.map((order) => {
-                const isSelected = order.id === selectedAdminOrderId;
-                return (
-                  <button key={order.id} type="button" onClick={() => setSelectedAdminOrderId(order.id)} className={`w-full rounded-2xl p-4 text-left transition-all ${isSelected ? theme.selectedCard : theme.card}`}>
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div><div className="flex items-center gap-2"><p className="font-semibold text-white">{order.id}</p><span className={`rounded-full px-2 py-1 text-[10px] ${theme.pill}`}>{order.packageName}</span></div><p className={`mt-1 text-sm ${theme.softText}`}>{order.clientName}</p><p className={`text-xs ${theme.mutedText}`}>{order.clientEmail}</p></div>
-                      <div className="text-left md:text-right"><p className="text-sm font-semibold text-white">${order.total}</p><p className={`text-xs ${theme.mutedText}`}>{order.submittedAt}</p></div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-2"><span className={`rounded-full px-3 py-1 text-xs ${order.status === "Ready for Delivery" ? "border border-emerald-400/20 bg-emerald-500/10" : order.status === "In Progress" ? theme.selectedAddon : theme.pill}`}>{order.status}</span><span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{order.turnaround}</span>{order.languages.length > 0 && <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{order.languages.length} localised language{order.languages.length !== 1 ? "s" : ""}</span>}</div>
-                  </button>
-                );
-              })}
+  {adminOrdersLoading && (
+    <div className={`rounded-2xl p-4 text-sm ${theme.panel}`}>
+      Loading real orders...
+    </div>
+  )}
+
+  {adminOrdersError && (
+    <div className={`rounded-2xl p-4 text-sm ${theme.errorPanel}`}>
+      {adminOrdersError}
+    </div>
+  )}
+
+  {!adminOrdersLoading && filteredAdminOrders.length === 0 && (
+    <div className={`rounded-2xl p-4 text-sm ${theme.panel}`}>
+      No real orders found yet.
+    </div>
+  )}
+
+  {!adminOrdersLoading &&
+    filteredAdminOrders.map((order) => {
+      const isSelected = order.id === selectedAdminOrderId;
+      return (
+        <button
+          key={order.id}
+          type="button"
+          onClick={() => setSelectedAdminOrderId(order.id)}
+          className={`w-full rounded-2xl p-4 text-left transition-all ${
+            isSelected ? theme.selectedCard : theme.card
+          }`}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-white">{order.id}</p>
+                <span className={`rounded-full px-2 py-1 text-[10px] ${theme.pill}`}>
+                  {order.packageName}
+                </span>
+              </div>
+              <p className={`mt-1 text-sm ${theme.softText}`}>{order.clientName}</p>
+              <p className={`text-xs ${theme.mutedText}`}>{order.clientEmail}</p>
+            </div>
+
+            <div className="text-left md:text-right">
+              <p className="text-sm font-semibold text-white">{formatUsd(order.total)}</p>
+              <p className={`text-xs ${theme.mutedText}`}>{order.submittedAt}</p>
             </div>
           </div>
 
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-xs ${
+                order.status === "Ready for Delivery"
+                  ? "border border-emerald-400/20 bg-emerald-500/10"
+                  : order.status === "In Progress"
+                  ? theme.selectedAddon
+                  : theme.pill
+              }`}
+            >
+              {order.status}
+            </span>
+
+            <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
+              {order.turnaround}
+            </span>
+
+            {order.languages.length > 0 && (
+              <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
+                {order.languages.length} localised language
+                {order.languages.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        </button>
+      );
+    })}
+</div>
           <div className={`rounded-2xl p-4 ${theme.panelStrong}`}>
             {selectedAdminOrder ? (
               <>
@@ -1212,7 +1335,20 @@ const handleProceedToPayment = async () => {
                 <div className="mb-4 grid gap-3 sm:grid-cols-2"><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total</p><p className="mt-1 text-lg font-semibold">${selectedAdminOrder.total}</p></div><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Turnaround</p><p className="mt-1 text-lg font-semibold">{selectedAdminOrder.turnaround}</p></div></div>
                 <div className="mb-4"><label className={`mb-2 block text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Status</label><select value={selectedAdminOrder.status} onChange={(e) => updateAdminOrder(selectedAdminOrder.id, { status: e.target.value })} className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}>{["Files Received", "In Progress", "Ready for Delivery", "Delivered", "Revision Requested", "Completed"].map((status) => <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>)}</select></div>
                 <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Add-ons</p>{selectedAdminOrder.addOns.length > 0 ? <ul className={`space-y-1 text-sm ${theme.softText}`}>{selectedAdminOrder.addOns.map((item) => <li key={item}>• {item}</li>)}</ul> : <p className={`text-sm ${theme.mutedText}`}>No add-ons selected</p>}</div><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Languages</p>{selectedAdminOrder.languages.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAdminOrder.languages.map((language) => <span key={language} className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{language}</span>)}</div> : <p className={`text-sm ${theme.mutedText}`}>No localized versions on this order</p>}</div></div>
-                <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Source files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload more</button></div><ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.sourceFiles.map((file) => <li key={file} className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"><span>{file}</span><button type="button" className="text-xs underline text-slate-300 hover:text-white">Download</button></li>)}</ul></div><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Delivery files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload finals</button></div>{selectedAdminOrder.deliveryFiles.length > 0 ? <ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.deliveryFiles.map((file) => <li key={file} className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"><span>{file}</span><button type="button" className="text-xs underline text-slate-300 hover:text-white">Copy link</button></li>)}</ul> : <div className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}>No delivery files uploaded yet.</div>}</div></div>
+                <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Source files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload more</button></div><ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.sourceFiles.map((file: any) => (
+  <li
+    key={file.path || file.fileName}
+    className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"
+  >
+    <span>{file.fileName || file.path}</span>
+    <button
+      type="button"
+      className="text-xs underline text-slate-300 hover:text-white"
+    >
+      Download
+    </button>
+  </li>
+))}</ul></div><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Delivery files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload finals</button></div>{selectedAdminOrder.deliveryFiles.length > 0 ? <ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.deliveryFiles.map((file) => <li key={file} className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"><span>{file}</span><button type="button" className="text-xs underline text-slate-300 hover:text-white">Copy link</button></li>)}</ul> : <div className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}>No delivery files uploaded yet.</div>}</div></div>
                 <div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Internal notes</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Save notes</button></div><textarea value={selectedAdminOrder.notes} onChange={(e) => updateAdminOrder(selectedAdminOrder.id, { notes: e.target.value })} className={`min-h-[120px] w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} /></div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2"><button className={`rounded-xl py-3 ${theme.buttonPrimary}`} type="button">Send delivery email</button><button className={`rounded-xl py-3 ${theme.panel}`} type="button">Mark as completed</button></div>
               </>
