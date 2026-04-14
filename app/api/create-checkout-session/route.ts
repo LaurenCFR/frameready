@@ -58,8 +58,8 @@ export async function POST(request: Request) {
     }
 
     const localizedCount = order.add_on_ids.includes("localized")
-      ? Math.max(1, order.localized_languages.length || 1)
-      : 1;
+  ? Math.max(1, order.localized_languages?.length ?? 1)
+  : 1;
 
     const trustedPricing = calculatePricing({
       packageId: order.package_id,
