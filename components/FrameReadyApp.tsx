@@ -266,11 +266,6 @@ const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   try {
     setAdminOrdersLoading(true);
     setAdminOrdersError("");
-    useEffect(() => {
-  if (view === "admin" && isAdminAuthenticated) {
-    void loadAdminOrders();
-  }
-}, [view, isAdminAuthenticated]);
 
     const response = await fetch("/api/admin/orders", {
       method: "GET",
@@ -300,6 +295,12 @@ const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
     setAdminOrdersLoading(false);
   }
 };
+
+useEffect(() => {
+  if (view === "admin" && isAdminAuthenticated) {
+    void loadAdminOrders();
+  }
+}, [view, isAdminAuthenticated]);
 
   const totalPrice = useMemo(
     () => calculateTotal(selectedPackage, selectedAddOns, localizedLanguageCount),
@@ -1214,28 +1215,42 @@ const handleProceedToPayment = async () => {
     <div className={`min-h-screen p-6 ${theme.page}`}>
       <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4"><img src="/frameready-logo.png" alt="FrameReady logo" className="w-14 cursor-pointer" onClick={() => navigateTo("home")} /><div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Operations</p><h1 className="text-2xl font-semibold">Admin Dashboard</h1></div></div>
-          <div className="flex items-center gap-4">
-  <button
-    onClick={() => void loadAdminOrders()}
-    className={theme.buttonSecondary}
-  >
-    Refresh Orders
-  </button>
-  <button
-    onClick={() => navigateTo("dashboard")}
-    className="text-sm underline text-slate-300 hover:text-white"
-  >
-    Back to Dashboard
-  </button>
-  <button
-    onClick={handleAdminLogout}
-    className="text-sm underline text-slate-300 hover:text-white"
-  >
-    Log out
-  </button>
+  <div className="flex items-center gap-4">
+    <img
+      src="/frameready-logo.png"
+      alt="FrameReady logo"
+      className="w-14 cursor-pointer"
+      onClick={() => navigateTo("home")}
+    />
+    <div>
+      <p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>
+        Operations
+      </p>
+      <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+    </div>
+  </div>
+
+  <div className="flex items-center gap-4">
+    <button
+      onClick={() => void loadAdminOrders()}
+      className={theme.buttonSecondary}
+    >
+      Refresh Orders
+    </button>
+    <button
+      onClick={() => navigateTo("dashboard")}
+      className="text-sm underline text-slate-300 hover:text-white"
+    >
+      Back to Dashboard
+    </button>
+    <button
+      onClick={handleAdminLogout}
+      className="text-sm underline text-slate-300 hover:text-white"
+    >
+      Log out
+    </button>
+  </div>
 </div>
-        </div>
 
         <div className="mb-8 grid gap-4 md:grid-cols-4">
           <div className={`rounded-2xl p-4 ${theme.panelStrong}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total orders</p><p className="mt-2 text-3xl font-semibold">{adminSummary.total}</p></div>
@@ -1328,6 +1343,8 @@ const handleProceedToPayment = async () => {
       );
     })}
 </div>
+          </div>
+
           <div className={`rounded-2xl p-4 ${theme.panelStrong}`}>
             {selectedAdminOrder ? (
               <>
