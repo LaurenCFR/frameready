@@ -40,7 +40,7 @@ export async function GET() {
       clientName: order.client_name || "Unknown Client",
       clientEmail: order.client_email || "",
       packageName: order.package_name,
-      total: order.total_cents / 100,
+      total: (order.total_cents ?? 0) / 100,
       status: mapOrderStatus(order),
       paid: order.payment_status === "paid",
       turnaround: getTurnaround(order.order_status),
