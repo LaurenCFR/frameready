@@ -48,6 +48,8 @@ export type OrderRow = {
   add_on_labels: string[] | null;
   uploaded_files: UploadedFileRecord[] | null;
 
+  notes?: string | null;
+
   turnaround?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
