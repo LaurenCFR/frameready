@@ -5,7 +5,9 @@ import type { OrderRow, OrderStatus } from "@/types/order";
 
 export const runtime = "nodejs";
 
-function formatSubmittedAt(iso: string): string {
+function formatSubmittedAt(iso?: string | null): string {
+  if (!iso) return "";
+
   try {
     return new Date(iso).toLocaleString();
   } catch {
