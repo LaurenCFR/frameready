@@ -73,5 +73,8 @@ export type OrderCreateInput = {
   packageId: PackageId;
   addOnIds: AddOnId[];
   localizedLanguages: string[];
+  localizedTitles?: string[] | null;
+  localizedRegionGuidelines?: string | null;
+  packageFontInfo?: string | null;
   notes?: string | null;
-};  
+};
