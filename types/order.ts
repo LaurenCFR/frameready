@@ -31,6 +31,7 @@ export type UploadedFileRecord = {
   size?: number | null;
   sizeBytes?: number | null;
   mimeType?: string | null;
+  publicUrl?: string | null;
 };
 
 export type OrderRow = {
@@ -62,14 +63,10 @@ export type OrderRow = {
 export type PackageId = "essential" | "pro" | "studio";
 
 export type AddOnId =
-  | "title_treatment_pack"
-  | "localized"
-  | "textless_background"
-  | "square_1_1"
-  | "banner_2_1"
-  | "express"
   | "variation"
-  | "logo_pack";
+  | "localized"
+  | "logo_pack"
+  | "express";
 
 export type OrderCreateInput = {
   clientName: string;
@@ -89,18 +86,15 @@ export type CurrencyCode = "usd" | "aud";
 
 export type PricingBreakdown = {
   currency: CurrencyCode;
-  subtotalCents: number;
-  totalCents: number;
-  package: {
-    id: PackageId;
-    label: string;
-    unitPriceCents: number;
-    quantity: number;
-  };
+  packageId: PackageId;
+  packageName: string;
+  packagePriceCents: number;
   addOns: Array<{
     id: AddOnId;
     label: string;
-    unitPriceCents: number;
     quantity: number;
+    unitPriceCents: number;
   }>;
+  subtotalCents: number;
+  totalCents: number;
 };
