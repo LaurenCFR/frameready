@@ -29,6 +29,7 @@ export type UploadedFileRecord = {
   bucket: string;
   fileName?: string | null;
   size?: number | null;
+  sizeBytes?: number | null;
   mimeType?: string | null;
 };
 
@@ -65,7 +66,10 @@ export type AddOnId =
   | "localized"
   | "textless_background"
   | "square_1_1"
-  | "banner_2_1";
+  | "banner_2_1"
+  | "express"
+  | "variation"
+  | "logo_pack";
 
 export type OrderCreateInput = {
   clientName: string;
@@ -76,5 +80,27 @@ export type OrderCreateInput = {
   localizedTitles?: Record<string, string> | null;
   localizedRegionGuidelines?: string | null;
   packageFontInfo?: string | null;
+  uploadedFiles?: UploadedFileRecord[] | null;
+  uploadedFontFiles?: UploadedFileRecord[] | null;
   notes?: string | null;
+};
+
+export type CurrencyCode = "usd" | "aud";
+
+export type PricingBreakdown = {
+  currency: CurrencyCode;
+  subtotalCents: number;
+  totalCents: number;
+  package: {
+    id: PackageId;
+    label: string;
+    unitPriceCents: number;
+    quantity: number;
+  };
+  addOns: Array<{
+    id: AddOnId;
+    label: string;
+    unitPriceCents: number;
+    quantity: number;
+  }>;
 };

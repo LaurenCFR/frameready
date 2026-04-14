@@ -1,104 +1,61 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { ORDER_STATUSES, type OrderStatus } from "@/types/order";
 
 export const runtime = "nodejs";
 
-type UpdateOrderBody = {
-  id: string;
-  updates: {
-    status?: string;
-    notes?: string;
-  };
-};
-
-function mapUiStatusToDbStatus(status: string): string {
-  switch (status) {
-    case "Awaiting Payment":
-      return "awaiting_payment";
-    case "Paid":
-      return "paid";
-    case "Files Received":
-      return "files_received";
-    case "In Progress":
-      return "in_progress";
-    case "Ready for Delivery":
-      return "ready_for_delivery";
-    case "Revision Requested":
-      return "revision_requested";
-    case "Completed":
-      return "completed";
-    default:
-      return "files_received";
-  }
+function isOrderStatus(value: unknown): value is OrderStatus {
+  return typeof value === "string" && ORDER_STATUSES.includes(value as OrderStatus);
 }
 
-export async function POST(request: Request) {
+type UpdateOrderBody = {
+  orderId?: string;
+  status?: OrderStatus;
+  notes?: string | null;
+};
+
+export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as UpdateOrderBody;
-    const { id, updates } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: "Missing order id." }, { status: 400 });
+    if (!body.orderId) {
+      return NextResponse.json({ error: "Missing orderId." }, { status: 400 });
+    }
+
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (body.status !== undefined) {
+      if (!isOrderStatus(body.status)) {
+        return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+      }
+
+      updates.order_status = body.status;
+    }
+
+    if (body.notes !== undefined) {
+      updates.notes = body.notes;
     }
 
     const supabase = createSupabaseAdminClient();
 
-    // admin UI uses public_order_id like FR-XXXXXX, so update by that
-    const dbUpdates: Record<string, unknown> = {};
-
-    if (typeof updates.status === "string") {
-  dbUpdates.order_status = mapUiStatusToDbStatus(updates.status);
-
-  if (
-    [
-      "Paid",
-      "Files Received",
-      "In Progress",
-      "Ready for Delivery",
-      "Completed",
-      "Revision Requested",
-    ].includes(updates.status)
-  ) {
-    dbUpdates.payment_status = "paid";
-  }
-
-  if (updates.status === "Awaiting Payment") {
-    dbUpdates.payment_status = "unpaid";
-  }
-}
-
-    if (typeof updates.notes === "string") {
-      dbUpdates.notes = updates.notes;
-    }
-
-    if (Object.keys(dbUpdates).length === 0) {
-      return NextResponse.json(
-        { error: "No valid updates provided." },
-        { status: 400 }
-      );
-    }
-
     const { data, error } = await supabase
       .from("orders")
-      .update(dbUpdates)
-      .eq("public_order_id", id)
-      .select("id, public_order_id, order_status, payment_status, notes")
+      .update(updates)
+      .eq("id", body.orderId)
+      .select()
       .single();
 
     if (error) {
-      console.error("update-order failed", error);
-      return NextResponse.json(
-        { error: "Failed to update order." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, order: data }, { status: 200 });
+    return NextResponse.json({ success: true, order: data });
   } catch (error) {
-    console.error("update-order route error", error);
-    return NextResponse.json(
-      { error: "Unable to update order." },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Unexpected server error.";
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
