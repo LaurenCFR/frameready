@@ -54,3 +54,12 @@ export type OrderRow = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+export type PackageId = "essential" | "pro" | "studio";
+
+export type AddOnId =
+  | "title_treatment_pack"
+  | "localized_versions"
+  | "textless_background"
+  | "square_1_1"
+  | "banner_2_1";  
