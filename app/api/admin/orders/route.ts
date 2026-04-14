@@ -12,7 +12,6 @@ function formatSubmittedAt(iso: string): string {
   }
 }
 
-import { ORDER_STATUS_LABELS } from "@/types/order";
 
 function mapOrderStatus(order: OrderRow): string {
   return ORDER_STATUS_LABELS[order.status] ?? "Unknown";
