@@ -104,7 +104,7 @@ export async function POST(request: Request) {
   (addOn: {
     quantity: number;
     label: string;
-    unitAmount: number;
+    unitPriceCents: number;
   }) => ({
           quantity: addOn.quantity,
           price_data: {
