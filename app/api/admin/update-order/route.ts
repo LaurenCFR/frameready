@@ -13,6 +13,8 @@ type UpdateOrderBody = {
 
 function mapUiStatusToDbStatus(status: string): string {
   switch (status) {
+    case "Awaiting Payment":
+      return "awaiting_payment";
     case "Paid":
       return "paid";
     case "Files Received":
@@ -21,10 +23,10 @@ function mapUiStatusToDbStatus(status: string): string {
       return "in_progress";
     case "Ready for Delivery":
       return "ready_for_delivery";
+    case "Revision Requested":
+      return "revision_requested";
     case "Completed":
       return "completed";
-    case "Awaiting Payment":
-      return "awaiting_payment";
     default:
       return "files_received";
   }
@@ -45,16 +47,25 @@ export async function POST(request: Request) {
     const dbUpdates: Record<string, unknown> = {};
 
     if (typeof updates.status === "string") {
-      dbUpdates.order_status = mapUiStatusToDbStatus(updates.status);
+  dbUpdates.order_status = mapUiStatusToDbStatus(updates.status);
 
-      if (updates.status === "Paid") {
-        dbUpdates.payment_status = "paid";
-      }
+  if (
+    [
+      "Paid",
+      "Files Received",
+      "In Progress",
+      "Ready for Delivery",
+      "Completed",
+      "Revision Requested",
+    ].includes(updates.status)
+  ) {
+    dbUpdates.payment_status = "paid";
+  }
 
-      if (updates.status === "Awaiting Payment") {
-        dbUpdates.payment_status = "unpaid";
-      }
-    }
+  if (updates.status === "Awaiting Payment") {
+    dbUpdates.payment_status = "unpaid";
+  }
+}
 
     if (typeof updates.notes === "string") {
       dbUpdates.notes = updates.notes;

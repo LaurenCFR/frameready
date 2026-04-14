@@ -1377,6 +1377,7 @@ const handleProceedToPayment = async () => {
   "Files Received",
   "In Progress",
   "Ready for Delivery",
+  "Revision Requested",
   "Completed",
 ].map((status) => <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>)}</select></div>
                 <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Add-ons</p>{selectedAdminOrder.addOns.length > 0 ? <ul className={`space-y-1 text-sm ${theme.softText}`}>{selectedAdminOrder.addOns.map((item) => <li key={item}>• {item}</li>)}</ul> : <p className={`text-sm ${theme.mutedText}`}>No add-ons selected</p>}</div><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Languages</p>{selectedAdminOrder.languages.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAdminOrder.languages.map((language) => <span key={language} className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{language}</span>)}</div> : <p className={`text-sm ${theme.mutedText}`}>No localized versions on this order</p>}</div></div>
