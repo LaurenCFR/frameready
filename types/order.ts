@@ -35,15 +35,20 @@ export type UploadedFileRecord = {
 export type OrderRow = {
   id: string;
   public_order_id?: string | null;
-  status: OrderStatus;
+
   client_name: string | null;
   client_email: string | null;
   package_name: string | null;
-  total: number | null;
-  turnaround: string | null;
+
+  total_cents: number | null;
+  payment_status: string | null;
+  order_status: OrderStatus;
+
   add_ons: string[] | null;
   languages: string[] | null;
   source_files: UploadedFileRecord[] | null;
+
+  turnaround?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };

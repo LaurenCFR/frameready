@@ -14,7 +14,7 @@ function formatSubmittedAt(iso: string): string {
 
 
 function mapOrderStatus(order: OrderRow): string {
-  return ORDER_STATUS_LABELS[order.status] ?? "Unknown";
+  return ORDER_STATUS_LABELS[order.order_status] ?? "Unknown";
 }
 
 export async function GET() {
