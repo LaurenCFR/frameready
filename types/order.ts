@@ -13,6 +13,7 @@ export type OrderStatus =
   | "files_received"
   | "in_progress"
   | "ready_for_delivery"
+  | "revision_requested"
   | "completed"
   | "cancelled";
 
