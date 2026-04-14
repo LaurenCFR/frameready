@@ -12,6 +12,33 @@ function formatSubmittedAt(iso: string): string {
   }
 }
 
+function getTurnaround(status: OrderStatus): string {
+  switch (status) {
+    case "draft":
+    case "awaiting_payment":
+      return "Pending";
+
+    case "paid":
+    case "files_received":
+      return "Queued";
+
+    case "in_progress":
+    case "revision_requested":
+      return "In Progress";
+
+    case "ready_for_delivery":
+      return "Ready for Delivery";
+
+    case "completed":
+      return "Delivered";
+
+    case "cancelled":
+      return "Cancelled";
+
+    default:
+      return "Pending";
+  }
+}
 
 function mapOrderStatus(order: OrderRow): string {
   return ORDER_STATUS_LABELS[order.order_status] ?? "Unknown";
