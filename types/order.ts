@@ -66,3 +66,12 @@ export type AddOnId =
   | "textless_background"
   | "square_1_1"
   | "banner_2_1";
+
+export type OrderCreateInput = {
+  clientName: string;
+  clientEmail: string;
+  packageId: PackageId;
+  addOnIds: AddOnId[];
+  localizedLanguages: string[];
+  notes?: string | null;
+};  
