@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { ORDER_STATUS_LABELS, type OrderRow } from "@/types/order";
+import { ORDER_STATUS_LABELS } from "@/types/order";
+import type { OrderRow, OrderStatus } from "@/types/order";
 
 export const runtime = "nodejs";
 
