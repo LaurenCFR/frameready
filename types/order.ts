@@ -34,6 +34,7 @@ export type UploadedFileRecord = {
 
 export type OrderRow = {
   id: string;
+  public_order_id?: string | null;
   status: OrderStatus;
   client_name: string | null;
   client_email: string | null;
