@@ -31,3 +31,18 @@ export type UploadedFileRecord = {
   size?: number | null;
   mimeType?: string | null;
 };
+
+export type OrderRow = {
+  id: string;
+  status: OrderStatus;
+  client_name: string | null;
+  client_email: string | null;
+  package_name: string | null;
+  total: number | null;
+  turnaround: string | null;
+  add_ons: string[] | null;
+  languages: string[] | null;
+  source_files: UploadedFileRecord[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
