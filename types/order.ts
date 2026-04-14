@@ -62,7 +62,7 @@ export type PackageId = "essential" | "pro" | "studio";
 
 export type AddOnId =
   | "title_treatment_pack"
-  | "localized_versions"
+  | "localized"
   | "textless_background"
   | "square_1_1"
-  | "banner_2_1";  
+  | "banner_2_1";
