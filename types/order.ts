@@ -44,9 +44,9 @@ export type OrderRow = {
   payment_status: string | null;
   order_status: OrderStatus;
 
-  add_ons: string[] | null;
-  languages: string[] | null;
-  source_files: UploadedFileRecord[] | null;
+  localized_languages: string[] | null;
+  add_on_labels: string[] | null;
+  uploaded_files: UploadedFileRecord[] | null;
 
   turnaround?: string | null;
   created_at?: string | null;
