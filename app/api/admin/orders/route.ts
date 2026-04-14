@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { OrderRow } from "@/types/order";
+import { ORDER_STATUS_LABELS, type OrderRow } from "@/types/order";
 
 export const runtime = "nodejs";
 
@@ -12,46 +12,10 @@ function formatSubmittedAt(iso: string): string {
   }
 }
 
-function getTurnaround(orderStatus: string): string {
-  switch (orderStatus) {
-    case "paid":
-      return "Ready to begin";
-    case "files_received":
-      return "Queued";
-    case "in_progress":
-      return "In progress";
-    case "ready_for_delivery":
-      return "Ready to deliver";
-    case "revision_requested":
-      return "Client revision needed";
-    case "completed":
-      return "Completed";
-    case "awaiting_payment":
-      return "Awaiting payment";
-    default:
-      return "Pending";
-  }
-}
+import { ORDER_STATUS_LABELS } from "@/types/order";
 
 function mapOrderStatus(order: OrderRow): string {
-  switch (order.order_status) {
-    case "awaiting_payment":
-      return "Awaiting Payment";
-    case "paid":
-      return "Paid";
-    case "files_received":
-      return "Files Received";
-    case "in_progress":
-      return "In Progress";
-    case "ready_for_delivery":
-      return "Ready for Delivery";
-    case "revision_requested":
-      return "Revision Requested";
-    case "completed":
-      return "Completed";
-    default:
-      return order.order_status;
-  }
+  return ORDER_STATUS_LABELS[order.status] ?? "Unknown";
 }
 
 export async function GET() {
