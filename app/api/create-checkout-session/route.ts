@@ -100,7 +100,12 @@ export async function POST(request: Request) {
             },
           },
         },
-        ...trustedPricing.addOns.map((addOn) => ({
+        ...trustedPricing.addOns.map(
+  (addOn: {
+    quantity: number;
+    label: string;
+    unitAmount: number;
+  }) => ({
           quantity: addOn.quantity,
           price_data: {
             currency: trustedPricing.currency,
