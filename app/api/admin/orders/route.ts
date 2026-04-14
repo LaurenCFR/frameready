@@ -22,6 +22,8 @@ function getTurnaround(orderStatus: string): string {
       return "In progress";
     case "ready_for_delivery":
       return "Ready to deliver";
+    case "revision_requested":
+      return "Client revision needed";
     case "completed":
       return "Completed";
     case "awaiting_payment":
@@ -43,6 +45,8 @@ function mapOrderStatus(order: OrderRow): string {
       return "In Progress";
     case "ready_for_delivery":
       return "Ready for Delivery";
+    case "revision_requested":
+      return "Revision Requested";
     case "completed":
       return "Completed";
     default:
