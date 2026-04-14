@@ -40,6 +40,9 @@ export type OrderRow = {
   client_email: string | null;
   package_name: string | null;
 
+  package_id?: PackageId | null;
+  add_on_ids?: AddOnId[] | null;
+
   total_cents: number | null;
   payment_status: string | null;
   order_status: OrderStatus;
