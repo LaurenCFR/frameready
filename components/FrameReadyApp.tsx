@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderStatus } from "@/types/order";
-
 type View = "home" | "dashboard" | "upload" | "admin";
 
 type AdminOrder = {
