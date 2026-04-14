@@ -1371,15 +1371,23 @@ const handleProceedToPayment = async () => {
               <>
                 <div className="mb-4 flex items-start justify-between gap-4"><div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Selected order</p><h2 className="text-xl font-semibold">{selectedAdminOrder.id}</h2><p className={`mt-1 text-sm ${theme.softText}`}>{selectedAdminOrder.clientName}</p><p className={`text-xs ${theme.mutedText}`}>{selectedAdminOrder.clientEmail}</p></div><span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{selectedAdminOrder.packageName}</span></div>
                 <div className="mb-4 grid gap-3 sm:grid-cols-2"><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total</p><p className="mt-1 text-lg font-semibold">${selectedAdminOrder.total}</p></div><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Turnaround</p><p className="mt-1 text-lg font-semibold">{selectedAdminOrder.turnaround}</p></div></div>
-                <div className="mb-4"><label className={`mb-2 block text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Status</label><select value={selectedAdminOrder.status} onChange={(e) => updateAdminOrder(selectedAdminOrder.id, { status: e.target.value })} className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}>{[
-  "Awaiting Payment",
-  "Paid",
-  "Files Received",
-  "In Progress",
-  "Ready for Delivery",
-  "Revision Requested",
-  "Completed",
-].map((status) => <option key={status} value={status} className="bg-slate-900 text-white">{status}</option>)}</select></div>
+                <div className="mb-4"><label className={`mb-2 block text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Status</label>import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderStatus } from "@/types/order";
+
+<select
+  value={selectedAdminOrder.status}
+  onChange={(e) =>
+    updateAdminOrder(selectedAdminOrder.id, {
+      status: e.target.value as OrderStatus,
+    })
+  }
+  className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+>
+  {ORDER_STATUSES.map((status) => (
+    <option key={status} value={status} className="bg-slate-900 text-white">
+      {ORDER_STATUS_LABELS[status]}
+    </option>
+  ))}
+</select></div>
                 <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Add-ons</p>{selectedAdminOrder.addOns.length > 0 ? <ul className={`space-y-1 text-sm ${theme.softText}`}>{selectedAdminOrder.addOns.map((item) => <li key={item}>• {item}</li>)}</ul> : <p className={`text-sm ${theme.mutedText}`}>No add-ons selected</p>}</div><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Languages</p>{selectedAdminOrder.languages.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAdminOrder.languages.map((language) => <span key={language} className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{language}</span>)}</div> : <p className={`text-sm ${theme.mutedText}`}>No localized versions on this order</p>}</div></div>
                 <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Source files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload more</button></div><ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.sourceFiles.map((file: any) => (
   <li
