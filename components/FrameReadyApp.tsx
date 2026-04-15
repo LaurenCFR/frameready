@@ -6,6 +6,7 @@ type View = "home" | "dashboard" | "upload" | "admin";
 
 type AdminOrder = {
   id: string;
+  dbId?: string;
   clientName: string;
   clientEmail: string;
   packageName: string;
@@ -514,15 +515,15 @@ useEffect(() => {
     }
 
     setAdminOrders((prev: AdminOrder[]) =>
-      prev.map((order) =>
-        order.id === id
-          ? {
-              ...order,
-              ...updates,
-            }
-          : order
-      )
-    );
+  prev.map((order) =>
+    (order.dbId ?? order.id) === id
+      ? {
+          ...order,
+          ...updates,
+        }
+      : order
+  )
+);
 
     await loadAdminOrders();
   } catch (error) {
@@ -1394,10 +1395,10 @@ const handleProceedToPayment = async () => {
 <select
   value={selectedAdminOrder.status}
   onChange={(e) =>
-    updateAdminOrder(selectedAdminOrder.id, {
-      status: e.target.value as OrderStatus,
-    })
-  }
+  updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+    status: e.target.value as OrderStatus,
+  })
+}
   className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
 >
   {ORDER_STATUSES.map((status) => (
