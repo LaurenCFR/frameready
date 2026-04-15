@@ -500,7 +500,11 @@ useEffect(() => {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ id, updates }),
+      body: JSON.stringify({
+        orderId: id,
+        status: updates.status,
+        notes: updates.notes,
+      }),
     });
 
     const json = await response.json();
@@ -508,6 +512,17 @@ useEffect(() => {
     if (!response.ok) {
       throw new Error(json?.error || "Failed to update order.");
     }
+
+    setAdminOrders((prev: AdminOrder[]) =>
+      prev.map((order) =>
+        order.id === id
+          ? {
+              ...order,
+              ...updates,
+            }
+          : order
+      )
+    );
 
     await loadAdminOrders();
   } catch (error) {
