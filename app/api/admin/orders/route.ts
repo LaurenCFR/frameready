@@ -71,7 +71,7 @@ export async function GET() {
       clientEmail: order.client_email || "",
       packageName: order.package_name,
       total: (order.total_cents ?? 0) / 100,
-      status: mapOrderStatus(order),
+      status: order.order_status,
       paid: order.payment_status === "paid",
       turnaround: getTurnaround(order.order_status),
       submittedAt: formatSubmittedAt(order.created_at),
