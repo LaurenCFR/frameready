@@ -65,24 +65,24 @@ export async function GET() {
     }
 
     const orders = ((data ?? []) as OrderRow[]).map((order) => ({
-      id: order.public_order_id || order.id,
-      dbId: order.id,
-      clientName: order.client_name || "Unknown Client",
-      clientEmail: order.client_email || "",
-      packageName: order.package_name,
-      total: (order.total_cents ?? 0) / 100,
-      status: order.order_status,
-      paid: order.payment_status === "paid",
-      turnaround: getTurnaround(order.order_status),
-      submittedAt: formatSubmittedAt(order.created_at),
-      languages: order.localized_languages || [],
-      addOns: order.add_on_labels || [],
-      sourceFiles: order.uploaded_files || [],
-      deliveryFiles: [],
-      notes: order.notes || "",
-      paymentStatus: order.payment_status,
-      orderStatus: order.order_status,
-    }));
+  id: order.public_order_id || order.id,
+  dbId: order.id,
+  clientName: order.client_name || "Unknown Client",
+  clientEmail: order.client_email || "",
+  packageName: order.package_name,
+  total: (order.total_cents ?? 0) / 100,
+  status: order.order_status,
+  paid: order.payment_status === "paid",
+  turnaround: getTurnaround(order.order_status),
+  submittedAt: formatSubmittedAt(order.created_at),
+  languages: order.localized_languages || [],
+  addOns: order.add_on_labels || [],
+  sourceFiles: order.uploaded_files || [],
+  deliveryFiles: [],
+  notes: order.notes || "",
+  paymentStatus: order.payment_status,
+  orderStatus: order.order_status,
+}));
 
     return NextResponse.json({ orders }, { status: 200 });
   } catch (error) {

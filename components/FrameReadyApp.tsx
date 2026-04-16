@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderStatus } from "@/types/order";
+
 type View = "home" | "dashboard" | "upload" | "admin";
 
 type AdminOrder = {
@@ -245,12 +246,21 @@ export default function FrameReadyApp({ initialView = "home" }: { initialView?: 
   const [packageFontInfo, setPackageFontInfo] = useState("");
   const [packageFontFiles, setPackageFontFiles] = useState<File[]>([]);
   const [files, setFiles] = useState<File[]>([]);
-  const [fileMessages, setFileMessages] = useState<FileMessage[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
+const [fileMessages, setFileMessages] = useState<FileMessage[]>([]);
+const [isDragging, setIsDragging] = useState(false);
+const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
 const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
 const [adminOrdersError, setAdminOrdersError] = useState("");
-  const [adminFilter, setAdminFilter] = useState("All");
+const [adminFilter, setAdminFilter] = useState<"all" | OrderStatus>("all");
+
+const adminFilterOptions = [
+    
+  { label: "All", value: "all" },
+  { label: "Files Received", value: "files_received" },
+  { label: "In Progress", value: "in_progress" },
+  { label: "Ready for Delivery", value: "ready_for_delivery" },
+  { label: "Completed", value: "completed" },
+] as const;
   const [selectedAdminOrderId, setSelectedAdminOrderId] = useState("FR-1001");
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(initialView !== "admin");
   const [adminEmail, setAdminEmail] = useState("");
@@ -308,8 +318,28 @@ useEffect(() => {
     [selectedPackage, selectedAddOns, localizedLanguageCount]
   );
 
-  const filteredAdminOrders =
-    adminFilter === "All" ? adminOrders : adminOrders.filter((order) => order.status === adminFilter);
+  const filteredOrders: AdminOrder[] =
+  adminFilter === "all"
+    ? adminOrders
+    : adminOrders.filter((order: AdminOrder) => order.status === adminFilter);
+
+console.log("adminFilter:", adminFilter);
+console.log(
+  "adminOrders statuses:",
+  adminOrders.map((order: AdminOrder) => ({
+    id: order.id,
+    dbId: order.dbId,
+    status: order.status,
+    turnaround: order.turnaround,
+  }))
+);
+console.log(
+  "filteredOrders:",
+  filteredOrders.map((order: AdminOrder) => ({
+    id: order.id,
+    status: order.status,
+  }))
+);
 
   const expandedPackageFeatures = useMemo(() => {
     if (selectedPackage === "essential") return packageOptions[0].features;
@@ -335,11 +365,15 @@ useEffect(() => {
 
   const adminSummary = {
   total: adminOrders.length,
-  active: adminOrders.filter((order) =>
-    ["Paid", "Files Received", "In Progress", "Ready for Delivery"].includes(order.status)
+  active: adminOrders.filter((order: AdminOrder) =>
+    ["files_received", "in_progress", "revision_requested"].includes(order.status)
   ).length,
-  ready: adminOrders.filter((order) => order.status === "Ready for Delivery").length,
-  delivered: adminOrders.filter((order) => order.status === "Completed").length,
+  ready: adminOrders.filter(
+    (order: AdminOrder) => order.status === "ready_for_delivery"
+  ).length,
+  completed: adminOrders.filter(
+    (order: AdminOrder) => order.status === "completed"
+  ).length,
 };
 
   const navigateTo = (nextView: View) => {
@@ -1293,14 +1327,29 @@ const handleProceedToPayment = async () => {
           <div className={`rounded-2xl p-4 ${theme.panelStrong}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total orders</p><p className="mt-2 text-3xl font-semibold">{adminSummary.total}</p></div>
           <div className={`rounded-2xl p-4 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Active</p><p className="mt-2 text-3xl font-semibold">{adminSummary.active}</p></div>
           <div className={`rounded-2xl p-4 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Ready to deliver</p><p className="mt-2 text-3xl font-semibold">{adminSummary.ready}</p></div>
-          <div className={`rounded-2xl p-4 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Completed</p><p className="mt-2 text-3xl font-semibold">{adminSummary.delivered}</p></div>
+          <div className={`rounded-2xl p-4 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Completed</p><p className="mt-2 text-3xl font-semibold">{adminSummary.completed}</p></div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className={`rounded-2xl p-4 ${theme.panel}`}>
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div><p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Orders</p><h2 className="text-lg font-semibold">Track and manage client deliveries</h2></div>
-              <div className="flex flex-wrap gap-2">{["All", "Files Received", "In Progress", "Ready for Delivery", "Completed"].map((filter) => <button key={filter} type="button" onClick={() => setAdminFilter(filter)} className={`rounded-full px-3 py-2 text-xs ${adminFilter === filter ? theme.selectedAddon : theme.pill}`}>{filter}</button>)}</div>
+              
+
+<div className="flex flex-wrap gap-2">
+  {adminFilterOptions.map((filter) => (
+    <button
+      key={filter.value}
+      type="button"
+      onClick={() => setAdminFilter(filter.value)}
+      className={`rounded-full px-3 py-2 text-xs ${
+        adminFilter === filter.value ? theme.selectedAddon : theme.pill
+      }`}
+    >
+      {filter.label}
+    </button>
+  ))}
+</div>
             </div>
 
             <div className="space-y-3">
@@ -1316,14 +1365,14 @@ const handleProceedToPayment = async () => {
     </div>
   )}
 
-  {!adminOrdersLoading && filteredAdminOrders.length === 0 && (
+  {!adminOrdersLoading && filteredOrders.length === 0 && (
     <div className={`rounded-2xl p-4 text-sm ${theme.panel}`}>
       No real orders found yet.
     </div>
   )}
 
   {!adminOrdersLoading &&
-    filteredAdminOrders.map((order) => {
+    filteredOrders.map((order) => {
       const isSelected = order.id === selectedAdminOrderId;
       return (
         <button
@@ -1424,7 +1473,29 @@ const handleProceedToPayment = async () => {
   </li>
 ))}</ul></div><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Delivery files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload finals</button></div>{selectedAdminOrder.deliveryFiles.length > 0 ? <ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.deliveryFiles.map((file) => <li key={file} className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"><span>{file}</span><button type="button" className="text-xs underline text-slate-300 hover:text-white">Copy link</button></li>)}</ul> : <div className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}>No delivery files uploaded yet.</div>}</div></div>
                 <div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Internal notes</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Save notes</button></div><textarea value={selectedAdminOrder.notes} onChange={(e) => updateAdminOrder(selectedAdminOrder.id, { notes: e.target.value })} className={`min-h-[120px] w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} /></div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2"><button className={`rounded-xl py-3 ${theme.buttonPrimary}`} type="button">Send delivery email</button><button className={`rounded-xl py-3 ${theme.panel}`} type="button">Mark as completed</button></div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+  <button
+    className={`rounded-xl py-3 ${theme.buttonPrimary}`}
+    type="button"
+  >
+    Send delivery email
+  </button>
+
+  <button
+    className={`rounded-xl py-3 ${theme.panel}`}
+    type="button"
+    disabled={selectedAdminOrder?.status === "completed"}
+    onClick={() =>
+      selectedAdminOrder &&
+      updateAdminOrder(
+        selectedAdminOrder.dbId ?? selectedAdminOrder.id,
+        { status: "completed" }
+      )
+    }
+  >
+    Mark as completed
+  </button>
+</div>
               </>
             ) : (
               <p className={theme.mutedText}>No order selected.</p>
