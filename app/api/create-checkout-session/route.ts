@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      success_url: `${siteUrl}/?checkout=success&order=${order.id}`,
+      success_url: `${siteUrl}/payment-success?order=${order.id}`,
       cancel_url: `${siteUrl}/upload?checkout=cancelled&order=${order.id}`,
       customer_email: order.client_email ?? undefined,
       client_reference_id: order.id,
@@ -139,10 +139,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (error) {
-    console.error("checkout session creation failed", error);
-    return NextResponse.json(
-      { error: "Unable to create checkout session." },
-      { status: 500 }
-    );
-  }
+  console.error("checkout session creation failed", error);
+
+  return NextResponse.json(
+    {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to create checkout session.",
+    },
+    { status: 500 }
+  );
+}
 }

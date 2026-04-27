@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
-import FrameReadyApp from "@/components/FrameReadyApp";
+import { cookies } from "next/headers";
 
 function sign(value: string, secret: string) {
   return createHmac("sha256", secret).update(value).digest("hex");
@@ -21,24 +20,25 @@ function isValidToken(token: string, secret: string) {
   return timingSafeEqual(a, b);
 }
 
-export default async function AdminPage() {
+export async function requireAdminSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get("frameready_admin_session")?.value;
 
   const secret = process.env.ADMIN_SESSION_SECRET;
   const expectedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 
-  let initialAdminAuthenticated = false;
-
-  if (token && secret && expectedEmail && isValidToken(token, secret)) {
-    const [email] = token.split("|");
-    initialAdminAuthenticated = email === expectedEmail;
+  if (!token || !secret || !expectedEmail || !isValidToken(token, secret)) {
+    return { authenticated: false as const };
   }
 
-  return (
-    <FrameReadyApp
-      initialView="admin"
-      initialAdminAuthenticated={initialAdminAuthenticated}
-    />
-  );
+  const [email] = token.split("|");
+
+  if (email !== expectedEmail) {
+    return { authenticated: false as const };
+  }
+
+  return {
+    authenticated: true as const,
+    email,
+  };
 }

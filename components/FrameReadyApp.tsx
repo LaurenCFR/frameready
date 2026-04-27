@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderStatus } from "@/types/order";
+import type { UploadedFileRecord } from "@/types/order";
 
 type View = "home" | "dashboard" | "upload" | "admin";
 
@@ -18,9 +19,15 @@ type AdminOrder = {
   submittedAt: string;
   languages: string[];
   addOns: string[];
-  sourceFiles: string[];
-  deliveryFiles: string[];
+  sourceFiles: import("@/types/order").UploadedFileRecord[];
+  deliveryFiles: import("@/types/order").UploadedFileRecord[];
   notes: string;
+  deliveredAt?: string;
+  deliveredBy?: string;
+  deliveryEmailSentAt?: string;
+  deliveryStatus?: "not_sent" | "ready_to_send" | "sent";
+  revisionRequestedAt?: string;
+  revisionRequestMessage?: string;
 };
 
 type FileMessage = { type: "error" | "warning"; text: string };
@@ -80,6 +87,7 @@ const packageOptions: PackageOption[] = [
       "3:4 Poster (Filmhub ready)",
       "16:9 Key Art (with title)",
       "4:3 Artwork (TV / FAST platforms)",
+      "Includes 1 round of minor artwork revisions"
     ],
   },
   {
@@ -95,6 +103,7 @@ const packageOptions: PackageOption[] = [
       "1:1 Square Artwork",
       "2:1 Banner",
       "Basic Title Treatment (transparent PNG)",
+      "Includes 2 rounds of minor artwork revisions"
     ],
   },
   {
@@ -108,6 +117,7 @@ const packageOptions: PackageOption[] = [
       "16:6 Ultra-wide Banner",
       "Apple-style Hero Backgrounds",
       "Advanced Title Treatment (multiple variations)",
+      "Includes 2 rounds of minor artwork revisions"
     ],
   },
 ];
@@ -174,8 +184,30 @@ const initialAdminOrders: AdminOrder[] = [
     submittedAt: "Today, 9:42 AM",
     languages: ["Spanish", "French"],
     addOns: ["🌍 Localised Versions Pack", "⚡ Express Delivery"],
-    sourceFiles: ["poster-master.psd", "filmhub-key-art.png"],
-    deliveryFiles: ["2x3-poster-final.jpg", "16x9-keyart-final.jpg"],
+    sourceFiles: [
+  {
+    path: "artwork/poster-master.psd",
+    bucket: "order-uploads",
+    fileName: "poster-master.psd",
+  },
+  {
+    path: "artwork/filmhub-key-art.png",
+    bucket: "order-uploads",
+    fileName: "filmhub-key-art.png",
+  },
+],
+deliveryFiles: [
+  {
+    path: "deliveries/2x3-poster-final.jpg",
+    bucket: "order-uploads",
+    fileName: "2x3-poster-final.jpg",
+  },
+  {
+    path: "deliveries/16x9-keyart-final.jpg",
+    bucket: "order-uploads",
+    fileName: "16x9-keyart-final.jpg",
+  },
+],
     notes: "Waiting on final localized title spacing review before delivery.",
   },
   {
@@ -190,8 +222,30 @@ const initialAdminOrders: AdminOrder[] = [
     submittedAt: "Yesterday, 4:15 PM",
     languages: [],
     addOns: [],
-    sourceFiles: ["master-poster.jpg"],
-    deliveryFiles: ["2x3-poster-final.jpg", "3x4-filmhub-final.jpg", "16x9-keyart-final.jpg"],
+    sourceFiles: [
+  {
+    path: "artwork/master-poster.jpg",
+    bucket: "order-uploads",
+    fileName: "master-poster.jpg",
+  },
+],
+deliveryFiles: [
+  {
+    path: "deliveries/2x3-poster-final.jpg",
+    bucket: "order-uploads",
+    fileName: "2x3-poster-final.jpg",
+  },
+  {
+    path: "deliveries/3x4-filmhub-final.jpg",
+    bucket: "order-uploads",
+    fileName: "3x4-filmhub-final.jpg",
+  },
+  {
+    path: "deliveries/16x9-keyart-final.jpg",
+    bucket: "order-uploads",
+    fileName: "16x9-keyart-final.jpg",
+  },
+],
     notes: "All exports completed. Ready to send delivery link.",
   },
   {
@@ -206,8 +260,24 @@ const initialAdminOrders: AdminOrder[] = [
     submittedAt: "May 2, 11:08 AM",
     languages: ["German", "Japanese", "Italian"],
     addOns: ["🌍 Localised Versions Pack", "🔤 Title Treatment Pack", "🎨 Artwork Variation Pack"],
-    sourceFiles: ["master-key-art.psd", "title-treatment.ai", "font-reference.zip"],
-    deliveryFiles: [],
+    sourceFiles: [
+  {
+    path: "artwork/master-key-art.psd",
+    bucket: "order-uploads",
+    fileName: "master-key-art.psd",
+  },
+  {
+    path: "artwork/title-treatment.ai",
+    bucket: "order-uploads",
+    fileName: "title-treatment.ai",
+  },
+  {
+    path: "artwork/font-reference.zip",
+    bucket: "order-uploads",
+    fileName: "font-reference.zip",
+  },
+],
+deliveryFiles: [],
     notes: "Client supplied layered source files. Waiting to begin title treatment exports.",
   },
 ];
@@ -235,7 +305,13 @@ function runDevChecks(): void {
 
 runDevChecks();
 
-export default function FrameReadyApp({ initialView = "home" }: { initialView?: View }) {
+export default function FrameReadyApp({
+  initialView = "home",
+  initialAdminAuthenticated = false,
+}: {
+  initialView?: View;
+  initialAdminAuthenticated?: boolean;
+}) {
   const [view, setView] = useState<View>(initialView);
   const [selectedPackage, setSelectedPackage] = useState<PackageOption["id"]>("pro");
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
@@ -251,29 +327,35 @@ const [isDragging, setIsDragging] = useState(false);
 const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
 const [adminOrdersLoading, setAdminOrdersLoading] = useState(false);
 const [adminOrdersError, setAdminOrdersError] = useState("");
+
 const [adminFilter, setAdminFilter] = useState<"all" | OrderStatus>("all");
 
 const adminFilterOptions = [
-    
   { label: "All", value: "all" },
   { label: "Files Received", value: "files_received" },
   { label: "In Progress", value: "in_progress" },
   { label: "Ready for Delivery", value: "ready_for_delivery" },
   { label: "Completed", value: "completed" },
 ] as const;
-  const [selectedAdminOrderId, setSelectedAdminOrderId] = useState("FR-1001");
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(initialView !== "admin");
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
-  const [adminAuthError, setAdminAuthError] = useState("");
+
+const [selectedAdminOrderId, setSelectedAdminOrderId] = useState("FR-1001");
+const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(initialAdminAuthenticated);
+const [adminEmail, setAdminEmail] = useState("");
+const [adminPassword, setAdminPassword] = useState("");
+const [adminAuthError, setAdminAuthError] = useState("");
 const [clientName, setClientName] = useState("");
 const [clientEmail, setClientEmail] = useState("");
 const [clientNotes, setClientNotes] = useState("");
 const [checkoutError, setCheckoutError] = useState("");
 const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
-  const selectedPackageData = packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
+const [isUploadingDeliveryFiles, setIsUploadingDeliveryFiles] = useState(false);
+const [deliveryUploadMessage, setDeliveryUploadMessage] = useState("");
+const [isDeliveryDragOver, setIsDeliveryDragOver] = useState(false);
 
-  const loadAdminOrders = async () => {
+const selectedPackageData =
+  packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
+
+const loadAdminOrders = async () => {
   try {
     setAdminOrdersLoading(true);
     setAdminOrdersError("");
@@ -313,15 +395,22 @@ useEffect(() => {
   }
 }, [view, isAdminAuthenticated]);
 
-  const totalPrice = useMemo(
-    () => calculateTotal(selectedPackage, selectedAddOns, localizedLanguageCount),
-    [selectedPackage, selectedAddOns, localizedLanguageCount]
-  );
+const totalPrice = useMemo(
+  () => calculateTotal(selectedPackage, selectedAddOns, localizedLanguageCount),
+  [selectedPackage, selectedAddOns, localizedLanguageCount]
+);
 
-  const filteredOrders: AdminOrder[] =
+  const filteredOrders: AdminOrder[] = (
   adminFilter === "all"
     ? adminOrders
-    : adminOrders.filter((order: AdminOrder) => order.status === adminFilter);
+    : adminOrders.filter((order: AdminOrder) => order.status === adminFilter)
+).sort((a, b) => {
+  if (a.status === "revision_requested" && b.status !== "revision_requested") return -1;
+  if (b.status === "revision_requested" && a.status !== "revision_requested") return 1;
+
+  // Newest first
+  return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+});
 
 console.log("adminFilter:", adminFilter);
 console.log(
@@ -361,12 +450,18 @@ console.log(
     [selectedAddOns]
   );
 
-  const selectedAdminOrder = adminOrders.find((order) => order.id === selectedAdminOrderId) ?? adminOrders[0];
+  const selectedAdminOrder =
+  adminOrders.find((order) => order.id === selectedAdminOrderId) ?? null;
 
   const adminSummary = {
   total: adminOrders.length,
   active: adminOrders.filter((order: AdminOrder) =>
-    ["files_received", "in_progress", "revision_requested"].includes(order.status)
+    [
+  "files_received",
+  "in_progress",
+  "revision_requested",
+  "priority_revision_requested",
+].includes(order.status)
   ).length,
   ready: adminOrders.filter(
     (order: AdminOrder) => order.status === "ready_for_delivery"
@@ -539,6 +634,11 @@ console.log(
         orderId: id,
         status: updates.status,
         notes: updates.notes,
+        deliveryFiles: updates.deliveryFiles,
+        deliveredAt: updates.deliveredAt,
+        deliveredBy: updates.deliveredBy,
+        deliveryEmailSentAt: updates.deliveryEmailSentAt,
+        deliveryStatus: updates.deliveryStatus,
       }),
     });
 
@@ -549,15 +649,12 @@ console.log(
     }
 
     setAdminOrders((prev: AdminOrder[]) =>
-  prev.map((order) =>
-    (order.dbId ?? order.id) === id
-      ? {
-          ...order,
-          ...updates,
-        }
-      : order
-  )
-);
+      prev.map((order) =>
+        (order.dbId ?? order.id) === id
+          ? { ...order, ...updates }
+          : order
+      )
+    );
 
     await loadAdminOrders();
   } catch (error) {
@@ -565,27 +662,174 @@ console.log(
   }
 };
 
-  const handleAdminLogin = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!adminEmail.trim() || !adminPassword.trim()) {
-      setAdminAuthError("Enter your admin email and password to continue.");
-      return;
-    }
-    if (adminEmail.trim().toLowerCase() !== "admin@framereadystudio.com") {
-      setAdminAuthError("This preview is limited to admin@framereadystudio.com.");
-      return;
-    }
-    setAdminAuthError("");
-    setIsAdminAuthenticated(true);
-    setAdminPassword("");
-  };
+const handleSendDelivery = async () => {
+  if (!selectedAdminOrder) return;
 
-  const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
+  const orderId = selectedAdminOrder.dbId ?? selectedAdminOrder.id;
+  const now = new Date().toISOString();
+
+  try {
+    const response = await fetch("/api/admin/send-delivery-email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ orderId }),
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      throw new Error(json?.error || "Failed to send delivery email.");
+    }
+
+    setAdminOrders((prev: AdminOrder[]) =>
+      prev.map((order) =>
+        (order.dbId ?? order.id) === orderId
+          ? {
+              ...order,
+              status: "completed",
+              turnaround: "Delivered",
+              deliveryStatus: "sent",
+              deliveredAt: now,
+              deliveryEmailSentAt: now,
+            }
+          : order
+      )
+    );
+
+    await loadAdminOrders();
+  } catch (error) {
+    console.error("Send delivery failed", error);
+  }
+};
+
+const handleDeleteDeliveryFile = async (filePath: string) => {
+  if (!selectedAdminOrder) return;
+
+  try {
+    const response = await fetch("/api/admin/delete-delivery-file", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        orderId: selectedAdminOrder.dbId ?? selectedAdminOrder.id,
+        filePath,
+      }),
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      throw new Error(json?.error || "Failed to delete delivery file.");
+    }
+
+    await loadAdminOrders();
+  } catch (error) {
+    console.error("Delete delivery file failed", error);
+  }
+};
+
+const uploadDeliveryFiles = async (fileList: FileList | File[]) => {
+  if (!selectedAdminOrder || fileList.length === 0) return;
+
+  const formData = new FormData();
+  formData.append("orderId", selectedAdminOrder.dbId ?? selectedAdminOrder.id);
+
+  Array.from(fileList).forEach((file) => {
+    formData.append("files", file);
+  });
+
+  try {
+    setIsUploadingDeliveryFiles(true);
+    setDeliveryUploadMessage("Uploading delivery files...");
+
+    const response = await fetch("/api/admin/upload-delivery", {
+      method: "POST",
+      body: formData,
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      throw new Error(json?.error || "Upload failed.");
+    }
+
+    const uploadedFiles = json.files || [];
+
+    await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+      deliveryFiles: [
+        ...(selectedAdminOrder.deliveryFiles || []),
+        ...uploadedFiles,
+      ],
+      status: "ready_for_delivery",
+    });
+
+    setDeliveryUploadMessage("Delivery files uploaded successfully.");
+    await loadAdminOrders();
+  } catch (error) {
+    console.error("Delivery upload failed", error);
+    setDeliveryUploadMessage("Delivery upload failed. Please try again.");
+  } finally {
+    setIsUploadingDeliveryFiles(false);
+  }
+};
+
+const handleDeliveryFilesUpload = async (
+  e: React.ChangeEvent<HTMLInputElement>
+) => {
+  if (!e.target.files?.length) return;
+
+  await uploadDeliveryFiles(e.target.files);
+  e.target.value = "";
+};
+
+  const handleAdminLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+
+  const email = adminEmail.trim();
+  const password = adminPassword.trim();
+
+  if (!email || !password) {
+    setAdminAuthError("Enter your admin email and password to continue.");
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const json = await response.json();
+
+    if (!response.ok) {
+      setAdminAuthError(json?.error || "Login failed.");
+      return;
+    }
+
+    setAdminAuthError("");
+setAdminPassword("");
+window.location.reload();
+  } catch {
+    setAdminAuthError("Unable to sign in right now.");
+  }
+};
+
+const handleAdminLogout = async () => {
+  try {
+    await fetch("/api/admin/logout", { method: "POST" });
+  } finally {
     setAdminEmail("");
     setAdminPassword("");
-    navigateTo("home");
-  };
+    window.location.reload();
+  }
+};  
+
 const localizedSelectionIsValid =
   !selectedAddOns.includes("localized") ||
   (localizedLanguages.length > 0 &&
@@ -845,6 +1089,9 @@ const handleProceedToPayment = async () => {
                     <p className="font-medium text-white">Compatible with Filmhub, Amazon, Apple TV, Netflix, Roku, Tubi & YouTube</p>
                   </div>
                 </div>
+                <p className={`mt-3 text-xs ${theme.mutedText}`}>
+  Revision rounds cover minor artwork formatting adjustments. Major creative changes or new artwork requests may require a paid revision.
+</p>
 
                 <div className="grid gap-5 md:grid-cols-3">
                   {packageOptions.map((pkg) => {
@@ -1026,6 +1273,13 @@ const handleProceedToPayment = async () => {
                     <div>
                       <p className="text-sm font-semibold text-white">{selectedPackageData.name}</p>
                       <p className={`mt-1 text-sm ${theme.mutedText}`}>{selectedPackageData.description}</p>
+                      <p className={`mt-2 text-xs ${theme.mutedText}`}>
+  {{
+    essential: "Includes 1 round of minor artwork revisions.",
+    pro: "Includes 2 rounds of minor artwork revisions.",
+    studio: "Includes 3 rounds of minor artwork revisions.",
+  }[selectedPackage]}
+</p>
                     </div>
                     <p className="text-xl font-bold text-white">{formatUsd(selectedPackageData.price)}</p>
                   </div>
@@ -1112,13 +1366,45 @@ const handleProceedToPayment = async () => {
               </div>
 
               {files.length > 0 && (
-                <div className={`rounded-3xl p-6 ${theme.panel}`}>
-                  <div className="mb-4"><h2 className="text-lg font-semibold">Uploaded files</h2><p className={`mt-1 text-sm ${theme.mutedText}`}>{files.length} file{files.length !== 1 ? "s" : ""} ready for review</p></div>
-                  <div className="space-y-2">
-                    {files.map((file) => <div key={`${file.name}-${file.size}`} className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm ${theme.card}`}><div><p className="font-medium text-white">{file.name}</p><p className={`mt-1 text-xs ${theme.mutedText}`}>{(file.size / 1024 / 1024).toFixed(2)} MB</p></div><button onClick={() => removeFile(file.name)} className="text-sm text-slate-300 hover:text-white">Remove</button></div>)}
-                  </div>
-                </div>
-              )}
+  <div className={`rounded-3xl p-6 ${theme.panel}`}>
+    <div className="mb-4">
+      <h2 className="text-lg font-semibold">Uploaded files</h2>
+      <p className="mt-1 text-sm text-emerald-300">
+        {files.length} file{files.length !== 1 ? "s" : ""} uploaded successfully
+      </p>
+    </div>
+
+    <div className="space-y-3">
+      {files.map((file) => (
+        <div
+          key={`${file.name}-${file.size}`}
+          className="flex items-center justify-between rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-4 text-sm"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/20 font-bold text-emerald-300">
+              ✓
+            </div>
+
+            <div>
+              <p className="font-medium text-white">{file.name}</p>
+              <p className="mt-1 text-xs text-emerald-200/80">
+                {(file.size / 1024 / 1024).toFixed(2)} MB · Uploaded successfully
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => removeFile(file.name)}
+            className="text-sm text-slate-300 underline hover:text-white"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
               {fileMessages.filter((message) => message.type === "error").length > 0 && (
                 <div className={`rounded-2xl p-4 text-sm ${theme.errorPanel}`}><p className="mb-2 font-semibold">Files blocked</p>{fileMessages.filter((message) => message.type === "error").map((message, i) => <p key={`${message.text}-${i}`}>• {message.text}</p>)}</div>
@@ -1199,7 +1485,10 @@ const handleProceedToPayment = async () => {
     </div>
   </div>
 </div>
-                <p className={`mb-2 text-[11px] font-medium uppercase tracking-[0.22em] ${theme.accentLine}`}>Order summary</p>
+<div className="mt-10"></div>
+                <p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>
+  Order summary
+</p>
                 <h2 className="text-xl font-semibold">Ready to submit</h2>
                 <p className={`mt-2 text-sm ${theme.mutedText}`}>Review your order before checkout. Your files and selections will be attached to this package.</p>
                 <div className="mt-5 rounded-2xl border border-white/6 bg-black/20 p-4"><div className="flex items-center justify-between"><span className="text-sm font-semibold text-white">{selectedPackageData.name}</span><span className="text-lg font-bold text-white">{formatUsd(selectedPackageData.price)}</span></div><p className={`mt-2 text-sm ${theme.mutedText}`}>{selectedPackageData.description}</p></div>
@@ -1270,9 +1559,9 @@ const handleProceedToPayment = async () => {
         <div className={`rounded-2xl p-6 ${theme.panelStrong}`}>
           <p className={`mb-2 text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>Admin access</p>
           <h1 className="mb-3 text-2xl font-semibold">Sign in to Admin</h1>
-          <p className={`mb-6 text-sm ${theme.mutedText}`}>This is a preview-only admin gate. We’ll replace this with real Supabase auth in the next step.</p>
+          <p className={`mb-6 text-sm ${theme.mutedText}`}>Sign in with your admin credentials to access the dashboard.</p>
           <form onSubmit={handleAdminLogin} className="space-y-4">
-            <div><label className="mb-1 block text-xs font-medium text-white">Email</label><input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="admin@framereadystudio.com" className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} autoComplete="email" /></div>
+            <div><label className="mb-1 block text-xs font-medium text-white">Email</label><input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Enter your admin email" className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} autoComplete="email" /></div>
             <div><label className="mb-1 block text-xs font-medium text-white">Password</label><input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Enter your admin password" className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} autoComplete="current-password" /></div>
             {adminAuthError && <div className={`rounded-xl p-3 text-sm ${theme.errorPanel}`}><p className="font-semibold">Sign-in failed</p><p className="mt-1 text-rose-100">{adminAuthError}</p></div>}
             <button type="submit" className={`w-full rounded-xl py-3 ${theme.buttonPrimary}`}>Sign in to Admin</button>
@@ -1386,7 +1675,21 @@ const handleProceedToPayment = async () => {
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-white">{order.id}</p>
+                <p className="font-semibold text-white flex items-center">
+  {order.id}
+
+  {order.status === "revision_requested" && (
+  <span className="ml-2 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-300">
+    Revision
+  </span>
+)}
+
+{order.status === "priority_revision_requested" && (
+  <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-200">
+    Paid Revision
+  </span>
+)}
+</p>
                 <span className={`rounded-full px-2 py-1 text-[10px] ${theme.pill}`}>
                   {order.packageName}
                 </span>
@@ -1402,17 +1705,24 @@ const handleProceedToPayment = async () => {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            
             <span
-              className={`rounded-full px-3 py-1 text-xs ${
-                order.status === "Ready for Delivery"
-                  ? "border border-emerald-400/20 bg-emerald-500/10"
-                  : order.status === "In Progress"
-                  ? theme.selectedAddon
-                  : theme.pill
-              }`}
-            >
-              {order.status}
-            </span>
+  className={`rounded-full px-3 py-1 text-xs ${
+    order.status === "priority_revision_requested"
+      ? "border border-amber-300/20 bg-amber-400/10 text-amber-200"
+      : order.status === "revision_requested"
+      ? "border border-orange-400/20 bg-orange-500/10 text-orange-300"
+      : order.status === "ready_for_delivery"
+      ? "border border-emerald-400/20 bg-emerald-500/10"
+      : order.status === "in_progress"
+      ? theme.selectedAddon
+      : order.status === "completed"
+      ? "border border-sky-400/20 bg-sky-500/10 text-sky-300"
+      : theme.pill
+  }`}
+>
+  {ORDER_STATUS_LABELS[order.status as OrderStatus] || order.status}
+</span>
 
             <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
               {order.turnaround}
@@ -1457,29 +1767,316 @@ const handleProceedToPayment = async () => {
   ))}
 </select>
 </div>
-                <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Add-ons</p>{selectedAdminOrder.addOns.length > 0 ? <ul className={`space-y-1 text-sm ${theme.softText}`}>{selectedAdminOrder.addOns.map((item) => <li key={item}>• {item}</li>)}</ul> : <p className={`text-sm ${theme.mutedText}`}>No add-ons selected</p>}</div><div className={`rounded-xl p-4 ${theme.panel}`}><p className="mb-2 font-medium text-white">Languages</p>{selectedAdminOrder.languages.length > 0 ? <div className="flex flex-wrap gap-2">{selectedAdminOrder.languages.map((language) => <span key={language} className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>{language}</span>)}</div> : <p className={`text-sm ${theme.mutedText}`}>No localized versions on this order</p>}</div></div>
-                <div className="mb-4 grid gap-4 lg:grid-cols-2"><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Source files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload more</button></div><ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.sourceFiles.map((file: any) => (
-  <li
-    key={file.path || file.fileName}
-    className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"
-  >
-    <span>{file.fileName || file.path}</span>
-    <button
-      type="button"
+
+    <div className="mb-4 grid gap-4">
+  <div className={`rounded-xl p-4 ${theme.panel}`}>
+    <div className="mb-3 flex items-center justify-between">
+      <p className="font-medium text-white">Source files</p>
+      <a
+  href={
+  selectedAdminOrder.dbId
+    ? `/api/admin/orders/${selectedAdminOrder.dbId}/download-source-files`
+    : "#"
+}
+className="text-xs underline text-slate-300 hover:text-white"
+>
+  Download all
+</a>
+    </div>
+
+    {selectedAdminOrder.sourceFiles?.length > 0 ? (
+      <ul className={`space-y-2 text-sm ${theme.softText}`}>
+        {selectedAdminOrder.sourceFiles.map((file: any) => (
+          <li
+  key={file.path || file.fileName || "source-file"}
+  className="flex flex-col gap-2 rounded-lg border border-white/6 bg-black/20 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+>
+  <div className="flex min-w-0 items-center gap-3">
+    {file.signedUrl && file.mimeType?.startsWith("image/") ? (
+      <img
+        src={file.signedUrl}
+        alt={file.fileName || file.path || "Source file"}
+        className="h-10 w-10 rounded-md border border-white/10 bg-slate-800 object-cover"
+      />
+    ) : (
+      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-slate-800 text-[10px] text-slate-400">
+        File
+      </div>
+    )}
+
+    <div className="min-w-0">
+      <p className="truncate text-sm font-medium text-white">
+        {file.fileName || file.path || "Source file"}
+      </p>
+
+      <p className="mt-0.5 text-xs text-slate-400">
+        {file.mimeType || "File"}
+        {typeof file.sizeBytes === "number"
+          ? ` · ${(file.sizeBytes / 1024 / 1024).toFixed(2)} MB`
+          : ""}
+      </p>
+    </div>
+  </div>
+
+  {file.signedUrl ? (
+    <a
+      href={file.signedUrl}
+      target="_blank"
+      rel="noreferrer"
       className="text-xs underline text-slate-300 hover:text-white"
     >
       Download
+    </a>
+  ) : (
+    <span className="text-xs text-slate-500">Unavailable</span>
+  )}
+</li>
+        ))}
+      </ul>
+    ) : (
+      <div
+        className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}
+      >
+        No source files uploaded yet.
+      </div>
+    )}
+  </div>
+
+  <div className={`rounded-xl p-4 ${theme.panel}`}>
+    <div className="mb-3 flex items-center justify-between">
+      <p className="font-medium text-white">Delivery files</p>
+
+      <label
+        className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${theme.buttonPrimary}`}
+      >
+        {isUploadingDeliveryFiles ? "Uploading..." : "Choose files"}
+        <input
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleDeliveryFilesUpload}
+        />
+      </label>
+    </div>
+
+    <div
+  onDragOver={(e) => {
+    e.preventDefault();
+    setIsDeliveryDragOver(true);
+  }}
+  onDragLeave={() => setIsDeliveryDragOver(false)}
+  onDrop={async (e) => {
+    e.preventDefault();
+    setIsDeliveryDragOver(false);
+
+    if (e.dataTransfer.files?.length) {
+      await uploadDeliveryFiles(e.dataTransfer.files);
+    }
+  }}
+  className={`mb-3 rounded-xl border border-dashed px-4 py-5 text-center transition ${
+    isDeliveryDragOver
+      ? "border-emerald-400/50 bg-emerald-500/10"
+      : "border-white/10 bg-black/20"
+  }`}
+>
+  <p className="text-sm font-medium text-white">
+    {isUploadingDeliveryFiles
+      ? "Uploading delivery files..."
+      : "Drag and drop delivery files here"}
+  </p>
+
+  <p className={`mt-1 text-xs ${theme.mutedText}`}>
+    Supports multiple files including JPG, PNG, TIFF, PSD and ZIP.
+  </p>
+</div>
+
+{deliveryUploadMessage && (
+  <div
+    className={`mb-3 rounded-lg px-3 py-2 text-xs ${
+      deliveryUploadMessage.includes("successfully")
+        ? "border border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+        : deliveryUploadMessage.includes("failed")
+        ? "border border-red-400/20 bg-red-500/10 text-red-200"
+        : "border border-sky-400/20 bg-sky-500/10 text-sky-200"
+    }`}
+  >
+    {deliveryUploadMessage}
+  </div>
+)}
+
+    {selectedAdminOrder.deliveryFiles?.length > 0 ? (
+      <ul className={`space-y-2 text-sm ${theme.softText}`}>
+        {selectedAdminOrder.deliveryFiles.map((file) => (
+          <li
+  key={file.path || file.fileName || "delivery-file"}
+  className="flex flex-col gap-2 rounded-lg border border-white/6 bg-black/20 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+>
+  <div className="flex min-w-0 items-center gap-3">
+    {file.signedUrl && file.mimeType?.startsWith("image/") ? (
+  <img
+    src={file.signedUrl}
+        alt={file.fileName || file.path || "Delivery file"}
+        className="h-10 w-10 rounded-md border border-white/10 bg-slate-800 object-cover"
+      />
+    ) : (
+      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-slate-800 text-[10px] text-slate-400">
+        File
+      </div>
+    )}
+
+    <div className="min-w-0">
+      <p className="truncate text-sm font-medium text-white">
+        {file.fileName || file.path}
+      </p>
+
+      <p className="mt-0.5 text-xs text-slate-400">
+        {file.mimeType || "File"}
+        {typeof file.sizeBytes === "number"
+          ? ` · ${(file.sizeBytes / 1024 / 1024).toFixed(2)} MB`
+          : ""}
+      </p>
+    </div>
+  </div>
+
+  <div className="flex shrink-0 items-center gap-3 self-end sm:self-auto">
+    {file.signedUrl ? (
+  <a
+    href={file.signedUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs underline text-slate-300 hover:text-white"
+      >
+        Open
+      </a>
+    ) : (
+      <span className="text-xs text-slate-500">Stored</span>
+    )}
+
+    <button
+      type="button"
+      onClick={() => handleDeleteDeliveryFile(file.path)}
+      className="text-xs underline text-red-300 hover:text-red-200"
+    >
+      Delete
     </button>
-  </li>
-))}</ul></div><div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Delivery files</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Upload finals</button></div>{selectedAdminOrder.deliveryFiles.length > 0 ? <ul className={`space-y-2 text-sm ${theme.softText}`}>{selectedAdminOrder.deliveryFiles.map((file) => <li key={file} className="flex items-center justify-between rounded-lg border border-white/6 bg-black/20 px-3 py-2"><span>{file}</span><button type="button" className="text-xs underline text-slate-300 hover:text-white">Copy link</button></li>)}</ul> : <div className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}>No delivery files uploaded yet.</div>}</div></div>
-                <div className={`rounded-xl p-4 ${theme.panel}`}><div className="mb-3 flex items-center justify-between"><p className="font-medium text-white">Internal notes</p><button type="button" className="text-xs underline text-slate-300 hover:text-white">Save notes</button></div><textarea value={selectedAdminOrder.notes} onChange={(e) => updateAdminOrder(selectedAdminOrder.id, { notes: e.target.value })} className={`min-h-[120px] w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`} /></div>
+  </div>
+</li>
+        ))}
+      </ul>
+    ) : (
+      <div
+        className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}
+      >
+        No delivery files uploaded yet.
+      </div>
+    )}
+  </div>
+</div>
+
+<div className={`mt-4 rounded-xl p-4 ${theme.panel}`}>
+  <div className="mb-3 flex items-center justify-between">
+    <p className="font-medium text-white">Delivery tracking</p>
+
+    <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
+      {selectedAdminOrder.deliveryStatus || "not_sent"}
+    </span>
+  </div>
+
+  <div className={`grid gap-3 text-sm ${theme.softText}`}>
+    <div className="rounded-lg border border-white/6 bg-black/20 p-3">
+      <p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>
+        Delivered at
+      </p>
+      <p className="mt-1 text-white">
+        {selectedAdminOrder.deliveredAt
+          ? new Date(selectedAdminOrder.deliveredAt).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })
+          : "—"}
+      </p>
+    </div>
+
+    <div className="rounded-lg border border-white/6 bg-black/20 p-3">
+      <p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>
+        Email sent at
+      </p>
+      <p className="mt-1 text-white">
+        {selectedAdminOrder.deliveryEmailSentAt
+          ? new Date(selectedAdminOrder.deliveryEmailSentAt).toLocaleString(
+              undefined,
+              {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }
+            )
+          : "—"}
+      </p>
+    </div>
+
+    <div className="rounded-lg border border-white/6 bg-black/20 p-3">
+      <p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>
+        Delivered by
+      </p>
+      <p className="mt-1 break-all text-white">
+        {selectedAdminOrder.deliveredBy || "—"}
+      </p>
+    </div>
+  </div>
+</div>     
+
+{selectedAdminOrder.revisionRequestMessage ? (
+  <div className="mt-4 rounded-xl border border-orange-400/20 bg-orange-500/10 p-4">
+    <div className="mb-2 flex items-center justify-between">
+      <p className="font-medium text-white">Revision request</p>
+
+      <span className="text-xs text-orange-100/80">
+        {selectedAdminOrder.revisionRequestedAt
+          ? new Date(selectedAdminOrder.revisionRequestedAt).toLocaleString(
+              undefined,
+              {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }
+            )
+          : "Requested"}
+      </span>
+    </div>
+
+    <p className="text-sm text-orange-50/90">
+      {selectedAdminOrder.revisionRequestMessage}
+    </p>
+
+    <button
+      type="button"
+      className={`mt-4 rounded-xl px-4 py-2 text-sm ${theme.buttonPrimary}`}
+      onClick={() =>
+        updateAdminOrder(
+          selectedAdminOrder.dbId ?? selectedAdminOrder.id,
+          { status: "in_progress" }
+        )
+      }
+    >
+      Resume work
+    </button>
+  </div>
+) : null}
+    
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
   <button
-    className={`rounded-xl py-3 ${theme.buttonPrimary}`}
-    type="button"
-  >
-    Send delivery email
-  </button>
+  className={`rounded-xl py-3 ${theme.buttonPrimary}`}
+  type="button"
+  disabled={
+    !selectedAdminOrder ||
+    selectedAdminOrder.deliveryFiles.length === 0 ||
+    selectedAdminOrder.deliveryStatus === "sent"
+  }
+  onClick={handleSendDelivery}
+>
+  {selectedAdminOrder?.deliveryStatus === "sent"
+    ? "Delivery sent"
+    : "Send delivery email"}
+</button>
 
   <button
     className={`rounded-xl py-3 ${theme.panel}`}
@@ -1495,6 +2092,22 @@ const handleProceedToPayment = async () => {
   >
     Mark as completed
   </button>
+
+{selectedAdminOrder.status === "priority_revision_requested" && (
+  <button
+    className={`rounded-xl py-3 ${theme.buttonPrimary}`}
+    type="button"
+    onClick={() =>
+      updateAdminOrder(
+        selectedAdminOrder.dbId ?? selectedAdminOrder.id,
+        { status: "in_progress" }
+      )
+    }
+  >
+    Start paid revision
+  </button>
+)}
+
 </div>
               </>
             ) : (

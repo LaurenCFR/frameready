@@ -6,6 +6,7 @@ export const ORDER_STATUSES = [
   "in_progress",
   "ready_for_delivery",
   "revision_requested",
+  "priority_revision_requested",
   "completed",
   "cancelled",
 ] as const;
@@ -20,6 +21,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   in_progress: "In Progress",
   ready_for_delivery: "Ready for Delivery",
   revision_requested: "Revision Requested",
+  priority_revision_requested: "Priority Revision Requested",
   completed: "Completed",
   cancelled: "Cancelled",
 };
@@ -32,6 +34,7 @@ export type UploadedFileRecord = {
   sizeBytes?: number | null;
   mimeType?: string | null;
   publicUrl?: string | null;
+  signedUrl?: string | null;
 };
 
 export type OrderRow = {
@@ -53,11 +56,23 @@ export type OrderRow = {
   add_on_labels: string[] | null;
   uploaded_files: UploadedFileRecord[] | null;
 
+  delivery_files?: UploadedFileRecord[] | null;
+  delivered_at?: string | null;
+  delivered_by?: string | null;
+  delivery_email_sent_at?: string | null;
+  delivery_status?: "not_sent" | "ready_to_send" | "sent" | null;
+  revision_requested_at?: string | null;
+  revision_request_message?: string | null;
+  revision_count?: number | null;
+  revision_limit?: number | null;
+
   notes?: string | null;
 
   turnaround?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+
+  delivery_token?: string | null;
 };
 
 export type PackageId = "essential" | "pro" | "studio";

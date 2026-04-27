@@ -12,9 +12,20 @@ type UpdateOrderBody = {
   orderId?: string;
   status?: OrderStatus;
   notes?: string | null;
+  deliveryFiles?: import("@/types/order").UploadedFileRecord[];
+  deliveredAt?: string | null;
+  deliveredBy?: string | null;
+  deliveryEmailSentAt?: string | null;
+  deliveryStatus?: "not_sent" | "ready_to_send" | "sent" | null;
 };
 
+import { requireAdminSession } from "@/lib/admin-auth";
 export async function POST(request: NextRequest) {
+  const session = await requireAdminSession();
+
+if (!session.authenticated) {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
   try {
     const body = (await request.json()) as UpdateOrderBody;
 
@@ -37,6 +48,26 @@ export async function POST(request: NextRequest) {
     if (body.notes !== undefined) {
       updates.notes = body.notes;
     }
+
+    if (body.deliveryFiles !== undefined) {
+  updates.delivery_files = body.deliveryFiles;
+}
+
+if (body.deliveredAt !== undefined) {
+  updates.delivered_at = body.deliveredAt;
+}
+
+if (body.deliveredBy !== undefined) {
+  updates.delivered_by = body.deliveredBy;
+}
+
+if (body.deliveryEmailSentAt !== undefined) {
+  updates.delivery_email_sent_at = body.deliveryEmailSentAt;
+}
+
+if (body.deliveryStatus !== undefined) {
+  updates.delivery_status = body.deliveryStatus;
+}
 
     const supabase = createSupabaseAdminClient();
 

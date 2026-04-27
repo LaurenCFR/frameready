@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         .from("orders")
         .update({
           payment_status: "paid",
-          order_status: "paid",
+          order_status: "files_received",
           stripe_checkout_session_id: session.id,
           stripe_payment_intent_id:
             typeof session.payment_intent === "string"
