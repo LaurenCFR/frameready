@@ -117,6 +117,24 @@ const uploadedFilesWithUrls = await Promise.all(
               </p>
             </div>
           </div>
+          {order.add_on_labels?.length > 0 && (
+  <div className="mt-6 rounded-2xl border border-white/6 bg-black/20 p-6">
+    <p className="mb-3 text-xs uppercase tracking-[0.18em] text-slate-400">
+      Add-ons ordered
+    </p>
+
+    <div className="flex flex-wrap gap-3">
+      {order.add_on_labels.map((addOn: string) => (
+        <span
+          key={addOn}
+          className="rounded-full border border-white/6 bg-white/[0.03] px-4 py-2 text-sm text-slate-200"
+        >
+          {addOn}
+        </span>
+      ))}
+    </div>
+  </div>
+)}
 
           <div className="mt-6 border-t border-white/10 pt-6">
             <div className="grid gap-4 lg:grid-cols-2">

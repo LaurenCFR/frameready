@@ -9,6 +9,7 @@ export const ORDER_STATUSES = [
   "priority_revision_requested",
   "completed",
   "cancelled",
+  "archived",
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -24,6 +25,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   priority_revision_requested: "Priority Revision Requested",
   completed: "Completed",
   cancelled: "Cancelled",
+  archived: "Archived",
 };
 
 export type UploadedFileRecord = {
@@ -56,6 +58,11 @@ export type OrderRow = {
   add_on_labels: string[] | null;
   uploaded_files: UploadedFileRecord[] | null;
 
+  localized_titles?: Record<string, string> | null;
+  localized_region_guidelines?: string | null;
+  package_font_info?: string | null;
+  uploaded_font_files?: UploadedFileRecord[] | null;
+
   delivery_files?: UploadedFileRecord[] | null;
   delivered_at?: string | null;
   delivered_by?: string | null;
@@ -65,6 +72,8 @@ export type OrderRow = {
   revision_request_message?: string | null;
   revision_count?: number | null;
   revision_limit?: number | null;
+  revision_delivery_files?: UploadedFileRecord[] | null;
+  revision_email_sent_at?: string | null;
 
   notes?: string | null;
 
@@ -112,4 +121,51 @@ export type PricingBreakdown = {
   }>;
   subtotalCents: number;
   totalCents: number;
+};
+
+export type AdminOrder = {
+  id: string;
+  dbId?: string;
+
+  clientName: string;
+  clientEmail: string;
+
+  packageName: string;
+  total: number;
+
+  status: OrderStatus;
+  paid: boolean;
+
+  turnaround?: string;
+
+  // Localised pack
+  languages: string[];
+  localizedTitles: Record<string, string>;
+
+  // Optional extras
+  regionGuidelines?: string;
+  packageFontInfo?: string;
+  fontFiles?: UploadedFileRecord[];
+
+  // Files
+  sourceFiles: UploadedFileRecord[];
+  deliveryFiles: UploadedFileRecord[];
+  revisionDeliveryFiles: UploadedFileRecord[];
+
+  // 🔥 ADD THESE (fix your errors)
+  submittedAt?: string;
+  addOns?: string[];
+
+  revisionRequestedAt?: string;
+  revisionRequestMessage?: string;
+  revisionEmailSentAt?: string;
+
+  // Misc
+  notes?: string;
+
+  // Delivery metadata
+  deliveredAt?: string;
+  deliveredBy?: string;
+  deliveryEmailSentAt?: string;
+  deliveryStatus?: "not_sent" | "ready_to_send" | "sent" | null;
 };

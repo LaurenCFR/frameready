@@ -12,15 +12,18 @@ function sanitizeSegment(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function makeStoragePath(kind: "artwork" | "font", fileName: string): string {
-  const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
+function makeStoragePath(
+  kind: "artwork" | "font",
+  fileName: string,
+  orderNumber: string
+): string {
   const random = Math.random().toString(36).slice(2, 10);
   const safeName = sanitizeSegment(fileName) || "file";
+  const safeOrderNumber = sanitizeSegment(orderNumber) || "unknown-order";
 
-  return `${kind}/${yyyy}/${mm}/${dd}/${random}-${safeName}`;
+  const folder = kind === "font" ? "fonts" : "source";
+
+  return `orders/${safeOrderNumber}/${folder}/${random}-${safeName}`;
 }
 
 export async function POST(request: Request) {
@@ -37,12 +40,14 @@ export async function POST(request: Request) {
     const supabase = createSupabaseAdminClient();
     const uploaded: UploadedFileRecord[] = [];
 
+    const orderNumber = String(formData.get("orderNumber") || "unknown-order");
+
     for (const entry of files) {
       if (!(entry instanceof File)) continue;
 
       const arrayBuffer = await entry.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      const path = makeStoragePath(kind, entry.name);
+      const path = makeStoragePath(kind, entry.name, orderNumber);
 
       const { error } = await supabase.storage
         .from(BUCKET)

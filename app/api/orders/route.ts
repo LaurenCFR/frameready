@@ -115,6 +115,8 @@ function makePublicOrderId(): string {
   return `FR-${random}`;
 }
 
+
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -186,5 +188,51 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "Unable to create order.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+
+    const supabase = createSupabaseAdminClient();
+
+    if (!body.orderId) {
+      return NextResponse.json(
+        { error: "orderId is required." },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        client_name: body.clientName,
+        client_email: body.clientEmail,
+        notes: body.notes,
+
+        localized_languages: body.localizedLanguages,
+        localized_titles: body.localizedTitles,
+        localized_region_guidelines: body.localizedRegionGuidelines,
+        package_font_info: body.packageFontInfo,
+
+        uploaded_files: body.uploadedFiles || [],
+        uploaded_font_files: body.uploadedFontFiles || [],
+
+        order_status: "awaiting_payment",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", body.orderId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to update order." },
+      { status: 500 }
+    );
   }
 }

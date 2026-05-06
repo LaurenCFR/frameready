@@ -28,11 +28,13 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdminClient();
 
-    const { data: order, error: fetchError } = await supabase
-      .from("orders")
-      .select("delivery_files")
-      .eq("id", body.orderId)
-      .single();
+    const orderQuery = supabase
+  .from("orders")
+  .select("id, delivery_files");
+
+const { data: order, error: fetchError } = body.orderId.startsWith("FR-")
+  ? await orderQuery.eq("public_order_id", body.orderId).single()
+  : await orderQuery.eq("id", body.orderId).single();
 
     if (fetchError || !order) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -55,12 +57,12 @@ export async function POST(request: NextRequest) {
     }
 
     const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        delivery_files: nextFiles,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", body.orderId);
+  .from("orders")
+  .update({
+    delivery_files: nextFiles,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", order.id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });

@@ -45,15 +45,20 @@ if (revisionCount >= revisionLimit) {
 }
 
     const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-  order_status: "revision_requested",
-  revision_requested_at: now,
-  revision_request_message: message || null,
-  revision_count: revisionCount + 1,
-  updated_at: now,
-})
-      .eq("id", order.id);
+  .from("orders")
+  .update({
+    order_status: "revision_requested",
+    revision_requested_at: now,
+    revision_request_message: message || null,
+    revision_count: revisionCount + 1,
+
+    // ✅ optional but recommended
+    delivered_at: null,
+    delivery_status: "not_sent",
+
+    updated_at: now,
+  })
+  .eq("id", order.id);
 
     if (updateError) {
       return NextResponse.json(

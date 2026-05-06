@@ -39,15 +39,19 @@ export default async function DeliveryPage({ params }: DeliveryPageProps) {
     notFound();
   }
 
-  const deliveryFiles: UploadedFileRecord[] = Array.isArray(order.delivery_files)
-    ? (order.delivery_files as UploadedFileRecord[])
+  const deliveryFiles =
+  Array.isArray(order.revision_delivery_files) &&
+  order.revision_delivery_files.length > 0
+    ? order.revision_delivery_files
+    : Array.isArray(order.delivery_files)
+    ? order.delivery_files
     : [];
 
   const deliveryFilesWithUrls: DeliveryFileWithUrl[] = await Promise.all(
-    deliveryFiles.map(async (file) => {
-      if (!file.bucket || !file.path) {
-        return { ...file, signedUrl: null };
-      }
+  deliveryFiles.map(async (file: UploadedFileRecord) => {
+    if (!file.bucket || !file.path) {
+      return { ...file, signedUrl: null };
+    }
 
       const { data, error: signedUrlError } = await supabase.storage
         .from(file.bucket)
@@ -65,11 +69,11 @@ export default async function DeliveryPage({ params }: DeliveryPageProps) {
   );
 
   const imageFiles = deliveryFiles.filter(
-  (file) => file.mimeType?.startsWith("image/")
+  (file: UploadedFileRecord) => file.mimeType?.startsWith("image/")
 );
 
 const otherFiles = deliveryFiles.filter(
-  (file) => !file.mimeType?.startsWith("image/")
+  (file: UploadedFileRecord) => !file.mimeType?.startsWith("image/")
 );
 
   const orderLabel = order.public_order_id || order.id;
@@ -167,7 +171,7 @@ const otherFiles = deliveryFiles.filter(
         <div className="space-y-2">
           {deliveryFilesWithUrls
             .filter(file => !file.mimeType?.startsWith("image/"))
-            .map((file) => (
+            .map((file: UploadedFileRecord) => (
               <div
                 key={file.path}
                 className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2"

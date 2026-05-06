@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { orderId } = await request.json();
+    const { orderId, deliveryType } = await request.json();
+const isRevisionDelivery = deliveryType === "revision";
 
     if (!orderId) {
       return NextResponse.json({ error: "Missing orderId." }, { status: 400 });
@@ -47,11 +48,11 @@ export async function POST(request: NextRequest) {
 
     const supabase = createSupabaseAdminClient();
 
-    const { data: order, error: fetchError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", orderId)
-      .single();
+    const orderQuery = supabase.from("orders").select("*");
+
+const { data: order, error: fetchError } = orderId.startsWith("FR-")
+  ? await orderQuery.eq("public_order_id", orderId).single()
+  : await orderQuery.eq("id", orderId).single();
 
     if (fetchError || !order) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -64,9 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const deliveryFiles: UploadedFileRecord[] = Array.isArray(order.delivery_files)
-      ? order.delivery_files
-      : [];
+    const deliveryFiles: UploadedFileRecord[] = isRevisionDelivery
+  ? Array.isArray(order.revision_delivery_files)
+    ? order.revision_delivery_files
+    : []
+  : Array.isArray(order.delivery_files)
+  ? order.delivery_files
+  : [];
 
     if (deliveryFiles.length === 0) {
       return NextResponse.json(
@@ -86,7 +91,7 @@ export async function POST(request: NextRequest) {
           delivery_token: deliveryToken,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", orderId);
+        .eq("id", order.id);
 
       if (tokenUpdateError) {
         return NextResponse.json(
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest) {
                       FrameReady Delivery
                     </div>
                     <div style="font-size:28px;line-height:1.2;font-weight:700;color:#f8fafc;">
-                      Your artwork is ready
+                      ${isRevisionDelivery ? "Your revised artwork is ready" : "Your artwork is ready"}
                     </div>
                     <div style="margin-top:8px;font-size:15px;color:#cbd5e1;">
                       Order ${orderLabel}
@@ -129,6 +134,14 @@ export async function POST(request: NextRequest) {
                     <p style="margin:0 0 20px;font-size:16px;line-height:1.7;color:#cbd5e1;">
                       Your FrameReady delivery package is complete and ready for download.
                     </p>
+
+                    ${
+                      isRevisionDelivery
+                      ? `<p style="margin:16px 0;color:#facc15;">
+                      ⚡ This is an updated revision of your artwork based on your feedback.
+                    </p>`
+                  : ""
+                  }
 
                     <p style="margin:0 0 24px;">
                       <a
@@ -162,7 +175,9 @@ export async function POST(request: NextRequest) {
     process.env.DELIVERY_FROM_EMAIL ||
     "FrameReady <deliveries@framereadystudio.com>",
   to: order.client_email,
-  subject: `Your FrameReady delivery is ready – ${orderLabel}`,
+  subject: isRevisionDelivery
+  ? `Your revised artwork is ready – ${orderLabel}`
+  : `Your FrameReady delivery is ready – ${orderLabel}`,
   html: emailHtml,
 });
 
@@ -179,17 +194,29 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
 
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        order_status: "completed",
-        delivered_at: now,
-        delivered_by: session.email,
-        delivery_status: "sent",
-        delivery_email_sent_at: now,
-        updated_at: now,
-      })
-      .eq("id", orderId);
+    const updatePayload = isRevisionDelivery
+  ? {
+      order_status: "completed",
+      revision_email_sent_at: now,
+      delivered_at: now,
+      delivered_by: session.email,
+      delivery_status: "sent",
+      delivery_email_sent_at: now,
+      updated_at: now,
+    }
+  : {
+      order_status: "completed",
+      delivered_at: now,
+      delivered_by: session.email,
+      delivery_status: "sent",
+      delivery_email_sent_at: now,
+      updated_at: now,
+    };
+
+const { error: updateError } = await supabase
+  .from("orders")
+  .update(updatePayload)
+  .eq("id", order.id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });

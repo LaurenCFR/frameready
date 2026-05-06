@@ -66,6 +66,7 @@ export async function GET() {
         { status: 500 }
       );
     }
+    console.log("RAW ADMIN ORDER:", data?.[0]);
 
     const orders = await Promise.all(
       ((data ?? []) as OrderRow[]).map(async (order) => {
@@ -140,6 +141,52 @@ export async function GET() {
     }
   })
 ),
+
+revisionDeliveryFiles: await Promise.all(
+  (order.revision_delivery_files || []).map(async (file) => {
+    try {
+      const { data } = await supabase.storage
+        .from(file.bucket)
+        .createSignedUrl(file.path, 60 * 60);
+
+      return {
+        ...file,
+        signedUrl: data?.signedUrl || null,
+      };
+    } catch {
+      return {
+        ...file,
+        signedUrl: null,
+      };
+    }
+  })
+),
+
+          localizedLanguages: order.localized_languages || [],
+          localizedTitles: order.localized_titles || {},
+          regionGuidelines: order.localized_region_guidelines || "",
+          packageFontInfo: order.package_font_info || "",
+          fontFiles: await Promise.all(
+  (order.uploaded_font_files || []).map(async (file) => {
+    try {
+      const { data } = await supabase.storage
+        .from(file.bucket)
+        .createSignedUrl(file.path, 60 * 60);
+
+      return {
+        ...file,
+        signedUrl: data?.signedUrl || null,
+      };
+    } catch (error) {
+      console.error("Failed to sign font file", file.path, error);
+
+      return {
+        ...file,
+        signedUrl: null,
+      };
+    }
+  })
+),
           notes: order.notes || "",
           paymentStatus: order.payment_status,
           orderStatus: order.order_status,
@@ -151,6 +198,7 @@ export async function GET() {
           revisionRequestMessage: order.revision_request_message || "",
           revisionCount: order.revision_count ?? 0,
           revisionLimit: order.revision_limit ?? 1,
+          revisionEmailSentAt: order.revision_email_sent_at || "",
         };
       })
     );
