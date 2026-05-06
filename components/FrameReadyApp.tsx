@@ -2041,7 +2041,7 @@ const validateAndAddFiles = async (incomingFiles: FileList | File[]) => {
     const fileArray = Array.from(incomingFiles);
     const validFiles: File[] = [];
     const errors: string[] = [];
-
+    setUploadErrors([]);
     for (const file of fileArray) {
       const extension = getFileExtension(file.name);
 
@@ -2078,10 +2078,14 @@ const validateAndAddFiles = async (incomingFiles: FileList | File[]) => {
 
   const uploadedFiles = await uploadFilesToStorage(validFiles, "artwork");
 
-  setUploadedArtworkFiles((prev) => [...prev, ...uploadedFiles]);
-  setUploadSuccessMessage(
-    `${validFiles.length} file${validFiles.length !== 1 ? "s" : ""} uploaded successfully.`
-  );
+setUploadedArtworkFiles((prev) => [...prev, ...uploadedFiles]);
+
+// ✅ clear old upload errors after successful upload
+setUploadErrors([]);
+
+setUploadSuccessMessage(
+  `${validFiles.length} file${validFiles.length !== 1 ? "s" : ""} uploaded successfully.`
+);
 }
 
     setUploadErrors(errors);
