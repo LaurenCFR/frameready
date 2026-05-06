@@ -1376,7 +1376,7 @@ const caseStudies: CaseStudy[] = [
     FrameReady
   </p>
 
-  <h1 className="mb-4 max-w-4xl text-5xl font-bold tracking-tight md:text-6xl">
+  <h1 className="mb-4 max-w-4xl text-4xl font-bold tracking-tight md:text-5xl">
     Professional Artwork QC for Streaming Platforms
   </h1>
 </>
@@ -1568,7 +1568,7 @@ const caseStudies: CaseStudy[] = [
       Common QC problems
     </p>
 
-    <h2 className="mt-3 text-3xl font-bold text-white md:text-5xl">
+    <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">
       Why Your Artwork Gets Rejected
     </h2>
 
@@ -1602,7 +1602,7 @@ const caseStudies: CaseStudy[] = [
       Artwork QC help
     </p>
 
-    <h2 className="mt-3 text-3xl font-bold text-white md:text-5xl">
+    <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">
   Artwork Failed QC?
 </h2>
 
@@ -2089,10 +2089,14 @@ setUploadSuccessMessage(
 }
 
     setUploadErrors(errors);
-  } catch {
-    setUploadErrors([
-      "Something went wrong while checking your files. Please try uploading again.",
-    ]);
+  } catch (error) {
+  console.error("Upload validation failed:", error);
+
+  setUploadErrors([
+    error instanceof Error
+      ? error.message
+      : "Something went wrong while checking your files. Please try uploading again.",
+  ]);
   } finally {
     setIsUploading(false);
   }
