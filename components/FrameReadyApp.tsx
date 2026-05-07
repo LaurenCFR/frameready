@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { createClient } from "@supabase/supabase-js";
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -163,6 +164,11 @@ const addOns: AddOn[] = [
 const MAX_FILE_SIZE_MB = 50;
 const MIN_DIMENSION_PX = 1400;
 const COMMON_LANGUAGES = ["Spanish", "French", "German", "Italian", "Japanese"] as const;
+
+const supabaseBrowser = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const initialAdminOrders: AdminOrder[] = [
   {
@@ -584,11 +590,13 @@ const cleanedFeatures = expandedPackageFeatures.filter(
     !feature.toLowerCase().includes("minor artwork revisions")
 );
 
-const whatYouReceiveItems = [
-  ...cleanedFeatures,
-  revisionFeature,
-  ...selectedAddOnObjects.map((addOn) => addOn.label),
-];
+const whatYouReceiveItems = Array.from(
+  new Set([
+    ...cleanedFeatures,
+    revisionFeature,
+    ...selectedAddOnObjects.map((addOn) => addOn.label),
+  ])
+);
 
   const hasRevisions = adminOrders.some(
   (order) =>
@@ -1116,38 +1124,65 @@ const canProceedToCheckout =
 const uploadFilesToStorage = async (
   uploadFiles: File[],
   kind: "artwork" | "font"
-) => {
+): Promise<UploadedFileRecord[]> => {
   if (!uploadFiles.length) return [];
 
-  const formData = new FormData();
-  formData.append("kind", kind);
-
-  for (const file of uploadFiles) {
-    formData.append("files", file);
-  }
-
   const orderNumber = getOrCreateDraftOrderNumber();
-formData.append("orderNumber", orderNumber);
 
-  const response = await fetch("/api/upload", {
+  const signResponse = await fetch("/api/upload/sign", {
     method: "POST",
-    body: formData,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      kind,
+      orderNumber,
+      files: uploadFiles.map((file) => ({
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      })),
+    }),
   });
 
-  const responseText = await response.text();
+  const signJson = await signResponse.json();
 
-let json: any = {};
-try {
-  json = responseText ? JSON.parse(responseText) : {};
-} catch {
-  throw new Error(responseText || "Upload failed.");
-}
-
-  if (!response.ok) {
-    throw new Error(json?.error || "Failed to upload files.");
+  if (!signResponse.ok) {
+    throw new Error(signJson?.error || "Could not prepare upload.");
   }
 
-  return json.files ?? [];
+  const signedFiles = signJson.files as Array<
+    UploadedFileRecord & {
+      token: string;
+      signedUrl: string;
+    }
+  >;
+
+  const uploadedRecords: UploadedFileRecord[] = [];
+
+  for (let index = 0; index < uploadFiles.length; index += 1) {
+    const file = uploadFiles[index];
+    const signedFile = signedFiles[index];
+
+    const { error } = await supabaseBrowser.storage
+      .from(signedFile.bucket)
+      .uploadToSignedUrl(signedFile.path, signedFile.token, file);
+
+    if (error) {
+      throw new Error(`${file.name}: ${error.message}`);
+    }
+
+    uploadedRecords.push({
+      bucket: signedFile.bucket,
+      path: signedFile.path,
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      publicUrl: null,
+    });
+  }
+
+  return uploadedRecords;
 };
 
 const getRelativeTime = (dateString: string) => {
