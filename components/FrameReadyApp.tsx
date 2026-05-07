@@ -1134,7 +1134,14 @@ formData.append("orderNumber", orderNumber);
     body: formData,
   });
 
-  const json = await response.json();
+  const responseText = await response.text();
+
+let json: any = {};
+try {
+  json = responseText ? JSON.parse(responseText) : {};
+} catch {
+  throw new Error(responseText || "Upload failed.");
+}
 
   if (!response.ok) {
     throw new Error(json?.error || "Failed to upload files.");
@@ -2098,11 +2105,10 @@ const validateAndAddFiles = async (incomingFiles: FileList | File[]) => {
 
 setUploadedArtworkFiles((prev) => [...prev, ...uploadedFiles]);
 
-// ✅ clear old upload errors after successful upload
 setUploadErrors([]);
 
 setUploadSuccessMessage(
-  `${validFiles.length} file${validFiles.length !== 1 ? "s" : ""} uploaded successfully.`
+  `${uploadedFiles.length} file${uploadedFiles.length !== 1 ? "s" : ""} uploaded successfully.`
 );
 
 return;
@@ -2112,12 +2118,19 @@ return;
   } catch (error) {
   console.error("Upload validation failed:", error);
 
-  setUploadErrors([
-    error instanceof Error
-      ? error.message
-      : "Something went wrong while checking your files. Please try uploading again.",
-  ]);
-  } finally {
+  setUploadErrors((prev) => {
+    // ✅ If uploads already succeeded, don't show stale/generic red error
+    if (uploadedArtworkFiles.length > 0) {
+      return [];
+    }
+
+    return [
+      error instanceof Error
+        ? error.message
+        : "Something went wrong while checking your files. Please try uploading again.",
+    ];
+  });
+} finally {
     setIsUploading(false);
   }
 };
