@@ -1962,7 +1962,6 @@ const canContinueToUpload =
                     {whatYouReceiveItems.map((feature) => (
   <li key={feature}>• {feature}</li>
 ))}
-                    {selectedAddOnObjects.map((addOn) => <li key={addOn.id}>• {addOn.label}</li>)}
                   </ul>
                 </div>
 
@@ -2139,9 +2138,7 @@ const validateAndAddFiles = async (incomingFiles: FileList | File[]) => {
   const uploadedFiles = await uploadFilesToStorage(validFiles, "artwork");
 
 setUploadedArtworkFiles((prev) => [...prev, ...uploadedFiles]);
-
 setUploadErrors([]);
-
 setUploadSuccessMessage(
   `${uploadedFiles.length} file${uploadedFiles.length !== 1 ? "s" : ""} uploaded successfully.`
 );

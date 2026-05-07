@@ -203,6 +203,26 @@ export async function PATCH(req: Request) {
         { status: 400 }
       );
     }
+const { data: existingOrder, error: fetchError } = await supabase
+  .from("orders")
+  .select("package_id, add_on_ids")
+  .eq("id", body.orderId)
+  .single();
+
+if (fetchError || !existingOrder) {
+  return NextResponse.json({ error: "Order not found." }, { status: 404 });
+}
+
+const localizedLanguageCount =
+  Array.isArray(body.localizedLanguages) && body.localizedLanguages.length > 0
+    ? body.localizedLanguages.length
+    : 1;
+
+const pricing = calculatePricing({
+  packageId: existingOrder.package_id,
+  addOnIds: existingOrder.add_on_ids || [],
+  localizedLanguageCount,
+});
 
     const { error } = await supabase
       .from("orders")
@@ -218,6 +238,10 @@ export async function PATCH(req: Request) {
 
         uploaded_files: body.uploadedFiles || [],
         uploaded_font_files: body.uploadedFontFiles || [],
+
+        subtotal_cents: pricing.subtotalCents,
+        total_cents: pricing.totalCents,
+        currency: pricing.currency,
 
         order_status: "awaiting_payment",
         updated_at: new Date().toISOString(),
