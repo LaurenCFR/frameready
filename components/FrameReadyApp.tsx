@@ -574,6 +574,22 @@ const getOrCreateDraftOrderNumber = () => {
     [selectedAddOns]
   );
 
+  const revisionFeature =
+  selectedPackage === "essential"
+    ? "Includes 1 round of minor artwork revisions"
+    : "Includes 2 rounds of minor artwork revisions";
+
+const cleanedFeatures = expandedPackageFeatures.filter(
+  (feature) =>
+    !feature.toLowerCase().includes("minor artwork revisions")
+);
+
+const whatYouReceiveItems = [
+  ...cleanedFeatures,
+  revisionFeature,
+  ...selectedAddOnObjects.map((addOn) => addOn.label),
+];
+
   const hasRevisions = adminOrders.some(
   (order) =>
     order.status === "revision_requested" ||
@@ -1901,7 +1917,9 @@ const canContinueToUpload =
                 <div className="mt-5">
                   <p className="mb-2 text-sm font-semibold text-white">What you receive</p>
                   <ul className={`space-y-2 text-sm ${theme.softText}`}>
-                    {expandedPackageFeatures.map((feature) => <li key={feature}>• {feature}</li>)}
+                    {whatYouReceiveItems.map((feature) => (
+  <li key={feature}>• {feature}</li>
+))}
                     {selectedAddOnObjects.map((addOn) => <li key={addOn.id}>• {addOn.label}</li>)}
                   </ul>
                 </div>
@@ -2086,9 +2104,11 @@ setUploadErrors([]);
 setUploadSuccessMessage(
   `${validFiles.length} file${validFiles.length !== 1 ? "s" : ""} uploaded successfully.`
 );
+
+return;
 }
 
-    setUploadErrors(errors);
+    setUploadErrors(errors.length > 0 ? errors : []);
   } catch (error) {
   console.error("Upload validation failed:", error);
 
