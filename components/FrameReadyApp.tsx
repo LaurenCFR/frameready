@@ -780,12 +780,17 @@ const whatYouReceiveItems = Array.from(
   };
 
   const removePackageFontFile = (name: string) => {
-    setPackageFontFiles((prev) => prev.filter((file) => file.name !== name));
-  };
+  setPackageFontFiles((prev) => prev.filter((file) => file.name !== name));
 
-  const removeFile = (name: string) => {
-    setFiles((prev) => prev.filter((file) => file.name !== name));
-  };
+};
+
+const removeFile = (name: string) => {
+  setFiles((prev) => prev.filter((file) => file.name !== name));
+
+  setUploadedArtworkFiles((prev) =>
+    prev.filter((file) => file.fileName !== name)
+  );
+};
 
   const updateAdminOrder = async (
   id: string,
@@ -1268,7 +1273,7 @@ const updateRes = await fetch("/api/orders", {
     packageFontInfo,
 
     uploadedFiles: uploadedArtworkFiles,
-    uploadedFontFiles,
+uploadedFontFiles,
   }),
 });
 
