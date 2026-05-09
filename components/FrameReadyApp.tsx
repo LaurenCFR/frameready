@@ -960,46 +960,113 @@ const handleDeleteRevisionDeliveryFile = async (filePath: string) => {
   }
 };
 
+const uploadSignedFilesToStorage = async (
+  uploadFiles: File[],
+  kind: "delivery" | "revision-delivery",
+  orderNumber: string
+): Promise<UploadedFileRecord[]> => {
+  if (!uploadFiles.length) return [];
+
+  const signResponse = await fetch("/api/upload/sign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      kind,
+      orderNumber,
+      files: uploadFiles.map((file) => ({
+        fileName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      })),
+    }),
+  });
+
+  const signText = await signResponse.text();
+  const signJson = signText ? JSON.parse(signText) : {};
+
+  if (!signResponse.ok) {
+    throw new Error(signJson?.error || "Could not prepare upload.");
+  }
+
+  const signedFiles = signJson.files as Array<
+    UploadedFileRecord & {
+      token: string;
+      signedUrl: string;
+    }
+  >;
+
+  const uploadedRecords: UploadedFileRecord[] = [];
+
+  for (let index = 0; index < uploadFiles.length; index += 1) {
+    const file = uploadFiles[index];
+    const signedFile = signedFiles[index];
+
+    const { error } = await supabaseBrowser.storage
+      .from(signedFile.bucket)
+      .uploadToSignedUrl(signedFile.path, signedFile.token, file);
+
+    if (error) {
+      throw new Error(`${file.name}: ${error.message}`);
+    }
+
+    uploadedRecords.push({
+      bucket: signedFile.bucket,
+      path: signedFile.path,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      publicUrl: null,
+    });
+  }
+
+  return uploadedRecords;
+};
+
 const uploadDeliveryFiles = async (fileList: FileList | File[]) => {
   if (!selectedAdminOrder || fileList.length === 0) return;
-
-  const formData = new FormData();
-  formData.append("orderId", selectedAdminOrder.dbId ?? selectedAdminOrder.id);
-
-  Array.from(fileList).forEach((file) => {
-    formData.append("files", file);
-  });
 
   try {
     setIsUploadingDeliveryFiles(true);
     setDeliveryUploadMessage("Uploading delivery files...");
 
-    const response = await fetch("/api/admin/upload-delivery", {
-      method: "POST",
-      body: formData,
-    });
+    const fileArray = Array.from(fileList);
 
-    const json = await response.json();
+    const uploadedFiles = await uploadSignedFilesToStorage(
+      fileArray,
+      "delivery",
+      selectedAdminOrder.id
+    );
 
-    if (!response.ok) {
-      throw new Error(json?.error || "Upload failed.");
-    }
-
-    const uploadedFiles = json.files || [];
+    const nextFiles = [
+      ...(selectedAdminOrder.deliveryFiles || []),
+      ...uploadedFiles,
+    ];
 
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-      deliveryFiles: [
-        ...(selectedAdminOrder.deliveryFiles || []),
-        ...uploadedFiles,
-      ],
-      status: "ready_for_delivery",
+      deliveryFiles: nextFiles,
+      deliveryStatus: "ready_to_send",
     });
 
     setDeliveryUploadMessage("Delivery files uploaded successfully.");
+
+    setTimeout(() => {
+      setDeliveryUploadMessage("");
+    }, 3000);
+
     await loadAdminOrders();
+
+console.log("Uploaded delivery files:", uploadedFiles);
+console.log("Next delivery files:", nextFiles);
   } catch (error) {
     console.error("Delivery upload failed", error);
-    setDeliveryUploadMessage("Delivery upload failed. Please try again.");
+
+    setDeliveryUploadMessage(
+      error instanceof Error
+        ? error.message
+        : "Delivery upload failed. Please try again."
+    );
   } finally {
     setIsUploadingDeliveryFiles(false);
   }
@@ -1008,52 +1075,45 @@ const uploadDeliveryFiles = async (fileList: FileList | File[]) => {
 const uploadRevisionDeliveryFiles = async (fileList: FileList | File[]) => {
   if (!selectedAdminOrder || fileList.length === 0) return;
 
-  const formData = new FormData();
-  formData.append("orderId", selectedAdminOrder.dbId ?? selectedAdminOrder.id);
-  formData.append("kind", "revision-delivery");
-
-  Array.from(fileList).forEach((file) => {
-    formData.append("files", file);
-  });
-
   try {
     setIsUploadingRevisionDeliveryFiles(true);
     setRevisionDeliveryUploadMessage("Uploading revision delivery files...");
 
-    const response = await fetch("/api/admin/upload-delivery", {
-      method: "POST",
-      body: formData,
-    });
+    const fileArray = Array.from(fileList);
 
-    const json = await response.json();
+    const uploadedFiles = await uploadSignedFilesToStorage(
+      fileArray,
+      "revision-delivery",
+      selectedAdminOrder.id
+    );
 
-    if (!response.ok) {
-      throw new Error(json?.error || "Revision delivery upload failed.");
-    }
-
-    const uploadedFiles = json.files || [];
+    const nextFiles = [
+      ...(selectedAdminOrder.revisionDeliveryFiles || []),
+      ...uploadedFiles,
+    ];
 
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-  revisionDeliveryFiles: [
-    ...(selectedAdminOrder.revisionDeliveryFiles || []),
-    ...uploadedFiles,
-  ],
-  revisionEmailSentAt: "",
-  status: "ready_for_delivery",
-});
+      revisionDeliveryFiles: nextFiles,
+      revisionEmailSentAt: "",
+      status: "ready_for_delivery",
+    });
 
     const message = "Revision delivery files uploaded successfully.";
+    setRevisionDeliveryUploadMessage(message);
 
-setRevisionDeliveryUploadMessage(message);
-
-if (message.includes("successfully")) {
-  setTimeout(() => setRevisionDeliveryUploadMessage(""), 3000);
-}
+    setTimeout(() => {
+      setRevisionDeliveryUploadMessage("");
+    }, 3000);
 
     await loadAdminOrders();
   } catch (error) {
     console.error("Revision delivery upload failed", error);
-    setRevisionDeliveryUploadMessage("Revision delivery upload failed. Please try again.");
+
+    setRevisionDeliveryUploadMessage(
+      error instanceof Error
+        ? error.message
+        : "Revision delivery upload failed. Please try again."
+    );
   } finally {
     setIsUploadingRevisionDeliveryFiles(false);
   }
@@ -1128,9 +1188,9 @@ const canProceedToCheckout =
 
 const uploadFilesToStorage = async (
   uploadFiles: File[],
-  kind: "artwork" | "font"
+  kind: "artwork" | "font" | "delivery" | "revision-delivery"
 ): Promise<UploadedFileRecord[]> => {
-  if (!uploadFiles.length) return [];
+  if (!uploadFiles.length) return [];  
 
   const orderNumber = getOrCreateDraftOrderNumber();
 

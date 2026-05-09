@@ -13,7 +13,7 @@ function sanitizeSegment(value: string): string {
 }
 
 function makeStoragePath(
-  kind: "artwork" | "font",
+  kind: "artwork" | "font" | "delivery" | "revision-delivery",
   fileName: string,
   orderNumber: string
 ): string {

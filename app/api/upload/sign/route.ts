@@ -11,14 +11,21 @@ function sanitizeSegment(value: string) {
 }
 
 function makeStoragePath(
-  kind: "artwork" | "font",
+  kind: "artwork" | "font" | "delivery" | "revision-delivery",
   fileName: string,
   orderNumber: string
 ): string {
   const random = Math.random().toString(36).slice(2, 10);
   const safeName = sanitizeSegment(fileName) || "file";
   const safeOrderNumber = sanitizeSegment(orderNumber) || "unknown-order";
-  const folder = kind === "font" ? "fonts" : "source";
+  const folder =
+  kind === "font"
+    ? "fonts"
+    : kind === "delivery"
+    ? "delivery"
+    : kind === "revision-delivery"
+    ? "revisions"
+    : "source";
 
   return `orders/${safeOrderNumber}/${folder}/${random}-${safeName}`;
 }
@@ -33,7 +40,10 @@ export async function POST(request: Request) {
     const orderNumber = String(body.orderNumber || "unknown-order");
     const files = Array.isArray(body.files) ? body.files : [];
 
-    if (!kind || !["artwork", "font"].includes(kind)) {
+    if (
+  !kind ||
+  !["artwork", "font", "delivery", "revision-delivery"].includes(kind)
+) {
       return NextResponse.json({ error: "Invalid upload kind." }, { status: 400 });
     }
 
