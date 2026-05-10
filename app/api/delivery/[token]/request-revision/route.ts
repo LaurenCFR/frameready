@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const { data: order, error: fetchError } = await supabase
       .from("orders")
-      .select("id, revision_count, revision_limit")
+      .select("id, package_id, revision_count, revision_limit")
       .eq("delivery_token", token)
       .maybeSingle();
 
@@ -32,7 +32,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const now = new Date().toISOString();
 
     const revisionCount = Number(order.revision_count ?? 0);
-const revisionLimit = Number(order.revision_limit ?? 1);
+const revisionLimit =
+  order.revision_limit != null
+    ? Number(order.revision_limit)
+    : order.package_id === "essential"
+    ? 1
+    : 2;
 
 if (revisionCount >= revisionLimit) {
   return NextResponse.json(

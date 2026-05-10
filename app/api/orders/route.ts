@@ -243,6 +243,9 @@ const pricing = calculatePricing({
         total_cents: pricing.totalCents,
         currency: pricing.currency,
 
+        revision_limit:
+        existingOrder.package_id === "essential" ? 1 : 2,
+
         order_status: "awaiting_payment",
         updated_at: new Date().toISOString(),
       })

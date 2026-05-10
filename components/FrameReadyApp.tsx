@@ -3674,13 +3674,7 @@ fontFiles:
 
 </div>
 
-{selectedAdminOrder.status === "in_progress" ? (
-  // ✅ FEEDBACK STATE
-  <div className="mt-4 rounded-xl border border-green-400/20 bg-green-500/10 p-4">
-    <p className="text-sm text-green-200">Revision request - Work resumed</p>
-  </div>
-) : selectedAdminOrder.revisionRequestMessage ? (
-  // 🔁 REVISION STATE
+{selectedAdminOrder.revisionRequestMessage ? (
   <div className="mt-4 rounded-xl border border-orange-400/20 bg-orange-500/10 p-4">
     <div className="mb-2 flex items-center justify-between">
       <p className="font-medium text-white">Revision request</p>
@@ -3706,14 +3700,11 @@ fontFiles:
       type="button"
       className={`mt-4 rounded-xl px-4 py-2 text-sm ${theme.buttonPrimary}`}
       onClick={() =>
-        updateAdminOrder(
-          selectedAdminOrder.dbId ?? selectedAdminOrder.id,
-          {
-            status: "in_progress",
-            revisionRequestMessage: undefined,
-            revisionRequestedAt: undefined,
-          }
-        )
+        updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+          status: "in_progress",
+          revisionRequestMessage: undefined,
+          revisionRequestedAt: undefined,
+        })
       }
     >
       Resume work

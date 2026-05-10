@@ -211,10 +211,18 @@ const otherFiles = deliveryFiles.filter(
               </p>
             </div>
 
+return (
+
             <DeliveryRevisionForm
   token={token}
   revisionCount={Number(order.revision_count ?? 0)}
-  revisionLimit={Number(order.revision_limit ?? 1)}
+  revisionLimit={
+  order.revision_limit != null
+    ? Number(order.revision_limit)
+    : order.package_id === "essential"
+    ? 1
+    : 2
+}
   orderId={order.public_order_id || order.id}
   clientName={order.client_name || "Client"}
   clientEmail={order.client_email || ""}

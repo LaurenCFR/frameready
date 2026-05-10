@@ -31,6 +31,7 @@ const pricing = calculatePricing({
         public_order_id: publicOrderId,
         package_id: body.packageId,
         package_name: body.packageName,
+        revision_limit: body.packageId === "essential" ? 1 : 2,
         add_on_ids: body.addOnIds || [],
         add_on_labels: body.addOnLabels || [],
         subtotal_cents: pricing.subtotalCents,
