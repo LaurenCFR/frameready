@@ -5,8 +5,19 @@ export const ORDER_STATUSES = [
   "files_received",
   "in_progress",
   "ready_for_delivery",
+
+  // FREE revisions
   "revision_requested",
-  "priority_revision_requested",
+  "revision_in_progress",
+  "revision_ready_for_delivery",
+
+  // PAID revisions
+  "paid_revision_quote_requested",
+  "awaiting_priority_revision_payment",
+  "paid_revision_paid",
+  "paid_revision_in_progress",
+  "paid_revision_ready_for_delivery",
+
   "completed",
   "cancelled",
   "archived",
@@ -21,11 +32,37 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   files_received: "Files Received",
   in_progress: "In Progress",
   ready_for_delivery: "Ready for Delivery",
+
   revision_requested: "Revision Requested",
-  priority_revision_requested: "Priority Revision Requested",
+  revision_in_progress: "Revision In Progress",
+  revision_ready_for_delivery: "Revision Ready for Delivery",
+
+  paid_revision_quote_requested: "Paid Revision Quote Requested",
+  awaiting_priority_revision_payment: "Awaiting Paid Revision Payment",
+  paid_revision_paid: "Paid Revision Paid",
+  paid_revision_in_progress: "Paid Revision In Progress",
+  paid_revision_ready_for_delivery: "Paid Revision Ready for Delivery",
+
   completed: "Completed",
   cancelled: "Cancelled",
   archived: "Archived",
+};
+
+export type RevisionHistoryItem = {
+  type:
+    | "revision_requested"
+    | "free_revision"
+    | "paid_revision_quote_requested"
+    | "awaiting_paid_revision_payment"
+    | "paid_revision_paid";
+
+  status?: "pending" | "in_progress" | "completed" | "paid";
+
+  message?: string;
+
+  createdAt: string;
+
+  amountUsd?: number;
 };
 
 export type UploadedFileRecord = {
@@ -68,8 +105,11 @@ export type OrderRow = {
   delivered_by?: string | null;
   delivery_email_sent_at?: string | null;
   delivery_status?: "not_sent" | "ready_to_send" | "sent" | null;
+  delivery_sets?: DeliverySet[] | null;
+  revision_history?: RevisionHistoryItem[] | null;
   revision_requested_at?: string | null;
   revision_request_message?: string | null;
+  revision_delivery_sets?: RevisionDeliverySet[] | null;
   revision_count?: number | null;
   revision_limit?: number | null;
   revision_delivery_files?: UploadedFileRecord[] | null;
@@ -150,12 +190,15 @@ export type AdminOrder = {
   // Files
   sourceFiles: UploadedFileRecord[];
   deliveryFiles: UploadedFileRecord[];
+  deliverySets?: DeliverySet[];
+  revisionDeliverySets?: RevisionDeliverySet[];
   revisionDeliveryFiles: UploadedFileRecord[];
+
 
   // 🔥 ADD THESE (fix your errors)
   submittedAt?: string;
   addOns?: string[];
-
+  revisionHistory?: RevisionHistoryItem[];
   revisionRequestedAt?: string;
   revisionRequestMessage?: string;
   revisionEmailSentAt?: string;
@@ -168,4 +211,18 @@ export type AdminOrder = {
   deliveredBy?: string;
   deliveryEmailSentAt?: string;
   deliveryStatus?: "not_sent" | "ready_to_send" | "sent" | null;
+};
+
+export type DeliverySet = {
+  type: "initial" | "free_1" | "free_2" | "paid" | string;
+  label: string;
+  files: UploadedFileRecord[];
+  sentAt?: string | null;
+};
+
+export type RevisionDeliverySet = {
+  type: "free_1" | "free_2" | "paid";
+  label: string;
+  files: UploadedFileRecord[];
+  emailSentAt?: string | null;
 };

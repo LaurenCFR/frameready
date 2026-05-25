@@ -10,6 +10,7 @@ import {
   type UploadedFileRecord,
   type OrderRow,
   type AdminOrder,
+  type RevisionHistoryItem,
 } from "@/types/order";
 
 type View = "home" | "dashboard" | "upload" | "review" | "admin";
@@ -351,9 +352,16 @@ const [adminFilter, setAdminFilter] = useState<AdminFilter>("all");
 const [lastCleanupRun, setLastCleanupRun] = useState<string | null>(null);
 const [showAdditionalDetails, setShowAdditionalDetails] = useState(false);
 const [showSourceFiles, setShowSourceFiles] = useState(true);
+const [expandedRevisionDeliverySet, setExpandedRevisionDeliverySet] =
+  useState<string>("");
 const [showDeliveryFiles, setShowDeliveryFiles] = useState(true);
 const [showRevisionDeliveryFiles, setShowRevisionDeliveryFiles] = useState(false);
+const [showDeliveryTracking, setShowDeliveryTracking] =
+  useState(false);
+const [showRevisionRequests, setShowRevisionRequests] =
+  useState(false);
 const [revisionEmailSent, setRevisionEmailSent] = useState<string | null>(null);
+const [paidRevisionQuoteMessage, setPaidRevisionQuoteMessage] = useState("");
 const [draftOrderNumber, setDraftOrderNumber] = useState("");
 const [draftOrderDbId, setDraftOrderDbId] = useState<string | null>(null);
 const adminFilterOptions = [
@@ -383,6 +391,7 @@ const [isDeliveryDragOver, setIsDeliveryDragOver] = useState(false);
 const [isRevisionDeliveryDragOver, setIsRevisionDeliveryDragOver] = useState(false);
 const [isUploadingRevisionDeliveryFiles, setIsUploadingRevisionDeliveryFiles] = useState(false);
 const [revisionDeliveryUploadMessage, setRevisionDeliveryUploadMessage] = useState("");
+const [paidRevisionAmount, setPaidRevisionAmount] = useState("");
 
 const selectedPackageData =
   packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
@@ -405,14 +414,24 @@ const loadAdminOrders = async () => {
 
     const mappedOrders: AdminOrder[] = (json.orders || []).map(mapOrderRowToAdminOrder);
 
-    setAdminOrders(mappedOrders);
+    console.log(
+  "Loaded admin orders revision sets:",
+  mappedOrders.map((order) => ({
+    id: order.id,
+    dbId: order.dbId,
+    revisionDeliverySets: order.revisionDeliverySets,
+  }))
+);
+    
+setAdminOrders(mappedOrders);
 
     if (mappedOrders.length > 0) {
       setSelectedAdminOrderId((current) =>
-        current && mappedOrders.some((order) => order.id === current)
-          ? current
-          : mappedOrders[0].id
-      );
+  current &&
+  mappedOrders.some((order) => (order.dbId ?? order.id) === current)
+    ? current
+    : mappedOrders[0].dbId ?? mappedOrders[0].id
+);
     }
   } catch (error) {
     setAdminOrdersError(
@@ -448,15 +467,43 @@ const totalPrice = useMemo(
   [selectedPackage, selectedAddOns, localizedLanguageCount]
 );
 
+const getTurnaroundHours = (order: AdminOrder) => {
+  const hasExpress =
+    order.addOns?.some((addOn) =>
+      String(addOn).toLowerCase().includes("express")
+    ) ||
+    order.packageName?.toLowerCase().includes("express");
+
+  return hasExpress ? 24 : 72;
+};
+
 const getDueInfo = (order: AdminOrder) => {
   if (!order.submittedAt) {
-    return { label: "Due date unknown", overdue: false, dueSoon: false };
+    return {
+      label: "Due date unknown",
+      overdue: false,
+      dueSoon: false,
+    };
   }
 
   const createdAt = new Date(order.submittedAt).getTime();
-  const dueAt = createdAt + getTurnaroundHours(order) * 60 * 60 * 1000;
+
+  if (Number.isNaN(createdAt)) {
+    return {
+      label: "Due date unknown",
+      overdue: false,
+      dueSoon: false,
+    };
+  }
+
+  const dueAt =
+    createdAt + getTurnaroundHours(order) * 60 * 60 * 1000;
+
   const diffMs = dueAt - Date.now();
-  const diffHours = Math.ceil(Math.abs(diffMs) / (1000 * 60 * 60));
+
+  const diffHours = Math.ceil(
+    Math.abs(diffMs) / (1000 * 60 * 60)
+  );
 
   if (diffMs < 0) {
     return {
@@ -487,7 +534,7 @@ const hasExpressDelivery = (order: AdminOrder) =>
     if (adminFilter === "revisions") {
       return (
         order.status === "revision_requested" ||
-        order.status === "priority_revision_requested"
+        order.status === "paid_revision_quote_requested"
       );
     }
 
@@ -495,8 +542,11 @@ const hasExpressDelivery = (order: AdminOrder) =>
   })
   
   .sort((a, b) => {
-  const aExpress = hasExpressDelivery(a);
-  const bExpress = hasExpressDelivery(b);
+  const aExpress =
+  hasExpressDelivery(a) && a.status !== "completed";
+
+  const bExpress =
+  hasExpressDelivery(b) && b.status !== "completed";
 
   if (aExpress && !bExpress) return -1;
   if (bExpress && !aExpress) return 1;
@@ -601,11 +651,24 @@ const whatYouReceiveItems = Array.from(
   const hasRevisions = adminOrders.some(
   (order) =>
     order.status === "revision_requested" ||
-    order.status === "priority_revision_requested"
+    order.status === "paid_revision_quote_requested"
 );
   
-  const selectedAdminOrder =
-  adminOrders.find((order) => order.id === selectedAdminOrderId) ?? null;
+  const selectedAdminOrder = adminOrders.find(
+  (order) =>
+    (order.dbId ?? order.id) === selectedAdminOrderId ||
+    order.id === selectedAdminOrderId
+);
+
+const deliveryLocked =
+  selectedAdminOrder?.deliveryStatus === "sent";
+
+console.log("SELECTED ORDER DEBUG:", {
+  selectedAdminOrderId,
+  selectedId: selectedAdminOrder?.id,
+  selectedDbId: selectedAdminOrder?.dbId,
+  revisionDeliverySets: selectedAdminOrder?.revisionDeliverySets,
+});
 
   useEffect(() => {
   if (selectedAdminOrder?.id) {
@@ -620,7 +683,9 @@ const whatYouReceiveItems = Array.from(
   "files_received",
   "in_progress",
   "revision_requested",
-  "priority_revision_requested",
+  "revision_in_progress",
+  "paid_revision_paid",
+  "paid_revision_in_progress",
 ].includes(order.status)
   ).length,
   ready: adminOrders.filter(
@@ -809,21 +874,27 @@ const removeFile = (name: string) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        orderId: order.dbId,
-        status: updates.status,
-        notes: updates.notes,
-        deliveryFiles: updates.deliveryFiles,
-        deliveredAt: updates.deliveredAt,
-        deliveredBy: updates.deliveredBy,
-        revisionDeliveryFiles: updates.revisionDeliveryFiles,
-        revisionEmailSentAt: updates.revisionEmailSentAt,
-        
-        deliveryEmailSentAt: updates.deliveryEmailSentAt,
-        deliveryStatus: updates.deliveryStatus,
-      }),
+  orderId: order.dbId,
+  status: updates.status,
+  notes: updates.notes,
+  deliveryFiles: updates.deliveryFiles,
+  deliverySets: updates.deliverySets,
+  deliveredAt: updates.deliveredAt,
+  deliveredBy: updates.deliveredBy,
+
+  revisionDeliveryFiles: updates.revisionDeliveryFiles,
+  revisionDeliverySets: updates.revisionDeliverySets,
+  revisionEmailSentAt: updates.revisionEmailSentAt,
+  revisionHistory: updates.revisionHistory,
+  
+  deliveryEmailSentAt: updates.deliveryEmailSentAt,
+  deliveryStatus: updates.deliveryStatus,
+}),
     });
 
     const json = await response.json();
+
+    console.log("Update order response:", json);
 
     if (!response.ok) {
       throw new Error(json?.error || "Failed to update order.");
@@ -862,6 +933,20 @@ const handleSendDelivery = async () => {
       throw new Error(json?.error || "Failed to send delivery email.");
     }
 
+    const now = new Date().toISOString();
+
+const nextDeliverySets = [
+  ...(selectedAdminOrder.deliverySets || []).filter(
+    (set) => set.type !== "initial"
+  ),
+  {
+    type: "initial",
+    label: "Original delivery",
+    files: selectedAdminOrder.deliveryFiles || [],
+    sentAt: now,
+  },
+];
+
     setAdminOrders((prev: AdminOrder[]) =>
       prev.map((order) =>
         (order.dbId ?? order.id) === orderId
@@ -872,6 +957,7 @@ const handleSendDelivery = async () => {
               deliveryStatus: "sent",
               deliveredAt: now,
               deliveryEmailSentAt: now,
+              deliverySets: nextDeliverySets,
             }
           : order
       )
@@ -883,7 +969,9 @@ const handleSendDelivery = async () => {
   }
 };
 
-const handleSendRevisionDelivery = async () => {
+const handleSendRevisionDelivery = async (
+  revisionType?: "free_1" | "free_2" | "paid"
+) => {
   if (!selectedAdminOrder) return;
 
   const orderId = selectedAdminOrder.dbId ?? selectedAdminOrder.id;
@@ -897,6 +985,7 @@ const handleSendRevisionDelivery = async () => {
       body: JSON.stringify({
         orderId,
         deliveryType: "revision",
+        revisionType,
       }),
     });
 
@@ -941,22 +1030,175 @@ const handleDeleteDeliveryFile = async (filePath: string) => {
   }
 };
 
-const handleDeleteRevisionDeliveryFile = async (filePath: string) => {
+const handleSendPaidRevisionPaymentLink = async () => {
   if (!selectedAdminOrder) return;
 
+  const amountCents = Math.round(Number(paidRevisionAmount) * 100);
+
+  if (!amountCents || amountCents < 100) {
+    alert("Enter a valid amount.");
+    return;
+  }
+
+  const response = await fetch(
+    "/api/create-priority-revision-checkout",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        orderId: selectedAdminOrder.id,
+        publicOrderId: selectedAdminOrder.id,
+        amountCents,
+      }),
+    }
+  );
+
+  const json = await response.json();
+
+  if (!response.ok) {
+    alert(json.error || "Could not send payment link.");
+    return;
+  }
+
+  setPaidRevisionQuoteMessage("Paid revision payment link sent.");
+
+  setPaidRevisionAmount("");
+
+  await loadAdminOrders();
+};
+
+const handleDeleteRevisionDeliverySetFile = async (
+  setType: "free_1" | "free_2" | "paid",
+  fileIdentifier?: string
+) => {
+  if (!selectedAdminOrder || !fileIdentifier) return;
+
   try {
-    const nextFiles = (selectedAdminOrder.revisionDeliveryFiles || []).filter(
-      (file) => file.path !== filePath
-    );
+    const nextSets = (selectedAdminOrder.revisionDeliverySets || []).map((set) => {
+      if (set.type !== setType) return set;
+
+      return {
+        ...set,
+        files: (set.files || []).filter((file) => {
+          const currentIdentifier = file.path || file.fileName;
+          return currentIdentifier !== fileIdentifier;
+        }),
+        emailSentAt: null,
+      };
+    });
 
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-  revisionDeliveryFiles: nextFiles,
-  revisionEmailSentAt: "",
-});
+      revisionDeliverySets: nextSets,
+      revisionEmailSentAt: "",
+    });
 
     await loadAdminOrders();
   } catch (error) {
-    console.error("Delete revision delivery file failed", error);
+    console.error("Delete revision delivery set file failed", error);
+  }
+};
+
+const handleSendRevisionDeliverySetEmail = async (
+  setType: "free_1" | "free_2" | "paid",
+  label: string
+) => {
+  if (!selectedAdminOrder) return;
+
+  try {
+    const now = new Date().toISOString();
+
+    const revisionHistory = selectedAdminOrder.revisionHistory || [];
+
+const latestActiveRevisionIndex = revisionHistory.findLastIndex((item) => {
+  if (setType === "paid") {
+    return (
+      item.type === "paid_revision_paid" &&
+      item.status === "in_progress"
+    );
+  }
+
+  return (
+    item.type === "revision_requested" &&
+    item.status === "in_progress"
+  );
+});
+
+const updatedRevisionHistory =
+  latestActiveRevisionIndex >= 0
+    ? revisionHistory.map((item, index) =>
+        index === latestActiveRevisionIndex
+          ? {
+              ...item,
+              status: "completed" as const,
+              deliveredAt: now,
+            }
+          : item
+      )
+    : revisionHistory;
+
+    const revisionSet = (selectedAdminOrder.revisionDeliverySets || []).find(
+      (set) => set.type === setType
+    );
+
+    const filesToSend = revisionSet?.files || [];
+
+    if (filesToSend.length === 0) {
+      throw new Error(`No files uploaded for ${label}.`);
+    }
+
+    const nextSets = (selectedAdminOrder.revisionDeliverySets || []).map((set) =>
+      set.type === setType
+        ? {
+            ...set,
+            emailSentAt: now,
+          }
+        : set
+    );
+
+    const nextDeliverySets = [
+  ...(selectedAdminOrder.deliverySets || []).filter(
+    (set) => set.type !== setType
+  ),
+  {
+    type: setType,
+    label,
+    files: filesToSend,
+    sentAt: now,
+  },
+];
+
+console.log(
+  "Saving paid revision completed history:",
+  JSON.stringify(updatedRevisionHistory, null, 2)
+);
+
+console.log(
+  "latestActiveRevisionIndex:",
+  latestActiveRevisionIndex
+);
+
+await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+      revisionDeliveryFiles: filesToSend,
+      revisionDeliverySets: nextSets,
+      deliverySets: nextDeliverySets,
+      revisionEmailSentAt: now,
+      deliveryStatus: "sent",
+      revisionHistory: updatedRevisionHistory,
+    });
+
+    await handleSendRevisionDelivery(setType);
+
+    await loadAdminOrders();
+  } catch (error) {
+    console.error("Send revision delivery set email failed", error);
+
+    setRevisionDeliveryUploadMessage(
+      error instanceof Error
+        ? error.message
+        : "Failed to send revision delivery email."
+    );
   }
 };
 
@@ -1011,14 +1253,19 @@ const uploadSignedFilesToStorage = async (
       throw new Error(`${file.name}: ${error.message}`);
     }
 
-    uploadedRecords.push({
-      bucket: signedFile.bucket,
-      path: signedFile.path,
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
-      sizeBytes: file.size,
-      publicUrl: null,
-    });
+    const { data: previewData } = await supabaseBrowser.storage
+  .from(signedFile.bucket)
+  .createSignedUrl(signedFile.path, 60 * 60 * 24 * 7);
+
+uploadedRecords.push({
+  bucket: signedFile.bucket,
+  path: signedFile.path,
+  fileName: file.name,
+  mimeType: file.type || "application/octet-stream",
+  sizeBytes: file.size,
+  publicUrl: null,
+  signedUrl: previewData?.signedUrl ?? null,
+});
   }
 
   return uploadedRecords;
@@ -1072,12 +1319,16 @@ console.log("Next delivery files:", nextFiles);
   }
 };
 
-const uploadRevisionDeliveryFiles = async (fileList: FileList | File[]) => {
+const uploadRevisionDeliverySetFiles = async (
+  setType: "free_1" | "free_2" | "paid",
+  label: string,
+  fileList: FileList | File[]
+) => {
   if (!selectedAdminOrder || fileList.length === 0) return;
 
   try {
     setIsUploadingRevisionDeliveryFiles(true);
-    setRevisionDeliveryUploadMessage("Uploading revision delivery files...");
+    setRevisionDeliveryUploadMessage(`Uploading ${label} files...`);
 
     const fileArray = Array.from(fileList);
 
@@ -1087,32 +1338,62 @@ const uploadRevisionDeliveryFiles = async (fileList: FileList | File[]) => {
       selectedAdminOrder.id
     );
 
-    const nextFiles = [
-      ...(selectedAdminOrder.revisionDeliveryFiles || []),
-      ...uploadedFiles,
-    ];
+    const existingSets = selectedAdminOrder.revisionDeliverySets || [];
+    const existingSet = existingSets.find((set) => set.type === setType);
+
+    const nextSets = existingSet
+      ? existingSets.map((set) =>
+          set.type === setType
+            ? {
+                ...set,
+                files: [...(set.files || []), ...uploadedFiles],
+              }
+            : set
+        )
+      : [
+          ...existingSets,
+          {
+            type: setType,
+            label,
+            files: uploadedFiles,
+            emailSentAt: null,
+          },
+        ];
 
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-      revisionDeliveryFiles: nextFiles,
+      revisionDeliverySets: nextSets,
       revisionEmailSentAt: "",
       status: "ready_for_delivery",
     });
 
-    const message = "Revision delivery files uploaded successfully.";
-    setRevisionDeliveryUploadMessage(message);
+    console.log("Saving revisionDeliverySets:", nextSets);
+
+    setAdminOrders((currentOrders) =>
+  currentOrders.map((order) =>
+    order.id === selectedAdminOrder.id
+      ? {
+          ...order,
+          revisionDeliverySets: nextSets,
+          revisionEmailSentAt: "",
+          status: "ready_for_delivery",
+        }
+      : order
+  )
+);
+
+    setRevisionDeliveryUploadMessage(`${label} files uploaded successfully.`);
 
     setTimeout(() => {
       setRevisionDeliveryUploadMessage("");
     }, 3000);
 
-    await loadAdminOrders();
   } catch (error) {
-    console.error("Revision delivery upload failed", error);
+    console.error("Revision delivery set upload failed", error);
 
     setRevisionDeliveryUploadMessage(
       error instanceof Error
         ? error.message
-        : "Revision delivery upload failed. Please try again."
+        : "Revision delivery upload failed."
     );
   } finally {
     setIsUploadingRevisionDeliveryFiles(false);
@@ -1237,35 +1518,22 @@ const uploadFilesToStorage = async (
       throw new Error(`${file.name}: ${error.message}`);
     }
 
-    uploadedRecords.push({
-      bucket: signedFile.bucket,
-      path: signedFile.path,
-      fileName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-      publicUrl: null,
-    });
+    const { data: previewData } = await supabaseBrowser.storage
+  .from(signedFile.bucket)
+  .createSignedUrl(signedFile.path, 60 * 60 * 24 * 7);
+
+uploadedRecords.push({
+  bucket: signedFile.bucket,
+  path: signedFile.path,
+  fileName: file.name,
+  mimeType: file.type || "application/octet-stream",
+  sizeBytes: file.size,
+  publicUrl: null,
+  signedUrl: previewData?.signedUrl ?? null,
+});
   }
 
   return uploadedRecords;
-};
-
-const getRelativeTime = (dateString: string) => {
-  const diff = Date.now() - new Date(dateString).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-
-  if (hours < 1) return "Just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-};
-
-const getTurnaroundHours = (order: AdminOrder) => {
-  if (order.packageName.toLowerCase().includes("essential")) return 72;
-  if (order.packageName.toLowerCase().includes("pro")) return 48;
-  if (order.packageName.toLowerCase().includes("studio")) return 72;
-
-  return 72;
 };
 
 const handleProceedToPayment = async () => {
@@ -1343,16 +1611,6 @@ const updateJson = updateText ? JSON.parse(updateText) : {};
 if (!updateRes.ok) {
   throw new Error(updateJson?.error || "Failed to update order.");
 }
-
-const getRelativeTime = (dateString: string) => {
-  const diff = Date.now() - new Date(dateString).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-
-  if (hours < 1) return "Just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-};
 
     const checkoutRes = await fetch("/api/create-checkout-session", {
       method: "POST",
@@ -2013,7 +2271,7 @@ const canContinueToUpload =
   {{
     essential: "Includes 1 round of minor artwork revisions.",
     pro: "Includes 2 rounds of minor artwork revisions.",
-    studio: "Includes 3 rounds of minor artwork revisions.",
+    studio: "Includes 2 rounds of minor artwork revisions.",
   }[selectedPackage]}
 </p>
                     </div>
@@ -2705,7 +2963,7 @@ const isClientDetailsValid =
 };
 
 const mapOrderRowToAdminOrder = (order: any): AdminOrder => ({
-  id: order.public_order_id ?? order.publicOrderId ?? order.id,
+  id: order.publicOrderId ?? order.public_order_id ?? order.id,
   dbId: order.id,
 
   clientName: order.client_name ?? order.clientName ?? "Unknown client",
@@ -2742,7 +3000,12 @@ packageFontInfo:
 fontFiles:
   order.uploaded_font_files ?? order.fontFiles ?? [],
 
-  submittedAt: order.created_at ?? order.createdAt ?? "",
+  submittedAt:
+  order.submitted_at ??
+  order.submittedAt ??
+  order.created_at ??
+  order.createdAt ??
+  "",
   languages: order.localized_languages ?? order.localizedLanguages ?? [],
 
   
@@ -2758,7 +3021,21 @@ fontFiles:
   deliveryEmailSentAt:
     order.delivery_email_sent_at ?? order.deliveryEmailSentAt ?? undefined,
   deliveryStatus: order.delivery_status ?? order.deliveryStatus ?? null,
+  revisionDeliverySets: Array.isArray(order.revision_delivery_sets)
+  ? order.revision_delivery_sets
+  : Array.isArray(order.revisionDeliverySets)
+  ? order.revisionDeliverySets
+  : [],
 
+  deliverySets: Array.isArray(order.delivery_sets)
+  ? order.delivery_sets
+  : [],
+
+revisionHistory: Array.isArray(order.revision_history)
+  ? order.revision_history
+  : Array.isArray(order.revisionHistory)
+  ? order.revisionHistory
+  : [],
   revisionRequestedAt:
     order.revision_requested_at ?? order.revisionRequestedAt ?? undefined,
   revisionRequestMessage:
@@ -2790,45 +3067,182 @@ fontFiles:
     </div>
   );
 
-  const renderAdmin = () => (
-    <div className={`min-h-screen p-6 ${theme.page}`}>
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex items-center justify-between gap-4">
-  <div className="flex items-center gap-4">
-    <img
-      src="/frameready-logo.png"
-      alt="FrameReady logo"
-      className="w-14 cursor-pointer"
-      onClick={() => navigateTo("home")}
-    />
-    <div>
-      <p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>
-        Operations
-      </p>
-      <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
-    </div>
-  </div>
+  const getRevisionHistoryStatusLabel = (item: any) => {
+  if (
+    item.type === "revision_delivered" ||
+    item.type === "paid_revision_delivered"
+  ) {
+    return "Completed";
+  }
 
-  <div className="flex items-center gap-4">
-    <button
-      onClick={() => void loadAdminOrders()}
-      className={theme.buttonSecondary}
-    >
-      Refresh Orders
-    </button>
-    <button
-      onClick={() => navigateTo("dashboard")}
-      className="text-sm underline text-slate-300 hover:text-white"
-    >
-      Back to Dashboard
-    </button>
-    <button
-      onClick={handleAdminLogout}
-      className="text-sm underline text-slate-300 hover:text-white"
-    >
-      Log out
-    </button>
-  </div>
+  if (item.type === "paid_revision_paid") {
+    return "Paid Revision Paid";
+  }
+
+  if (item.type === "paid_revision_quote_sent") {
+    return "Quote sent";
+  }
+
+  if (item.type === "paid_revision_quote_requested") {
+    return "Quote requested";
+  }
+
+  if (
+    item.type === "revision_requested" ||
+    item.type === "paid_revision_requested"
+  ) {
+    return "Pending";
+  }
+
+  if (
+    item.type === "revision_in_progress" ||
+    item.type === "paid_revision_in_progress"
+  ) {
+    return "In progress";
+  }
+
+  return "Pending";
+};
+
+const getRevisionHistoryBadge = (item: any) => {
+  if (item.status === "completed") {
+    return {
+      label: "Completed",
+      className:
+        "rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200",
+    };
+  }
+
+  if (item.status === "in_progress") {
+    return {
+      label: "In progress",
+      className:
+        "rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-200",
+    };
+  }
+
+  if (item.status === "quote_sent") {
+    return {
+      label: "Quote sent",
+      className:
+        "rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-200",
+    };
+  }
+
+  if (item.status === "paid") {
+    return {
+      label: "Paid Revision Paid",
+      className:
+        "rounded-full border border-purple-400/20 bg-purple-500/10 px-3 py-1 text-xs text-purple-200",
+    };
+  }
+
+  if (item.type === "paid_revision_paid") {
+    return {
+      label: "Paid Revision Paid",
+      className:
+        "rounded-full border border-purple-400/20 bg-purple-500/10 px-3 py-1 text-xs text-purple-200",
+    };
+  }
+
+  if (item.type === "paid_revision_quote_requested") {
+    return {
+      label: "Quote requested",
+      className:
+        "rounded-full border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-200",
+    };
+  }
+
+  if (item.type === "awaiting_paid_revision_payment") {
+    return {
+      label: "Awaiting payment",
+      className:
+        "rounded-full border border-orange-400/20 bg-orange-500/10 px-3 py-1 text-xs text-orange-200",
+    };
+  }
+
+  return {
+    label: "Pending",
+    className:
+      "rounded-full border border-slate-400/20 bg-slate-500/10 px-3 py-1 text-xs text-slate-200",
+  };
+};
+
+const handleResumeRevisionWork = async (
+  order: AdminOrder,
+  revisionIndex: number
+) => {
+  const revisionItem = order.revisionHistory?.[revisionIndex];
+
+  const isPaidRevision = revisionItem?.type === "paid_revision_paid";
+
+  const updatedHistory: RevisionHistoryItem[] = (order.revisionHistory ?? []).map(
+    (item, index): RevisionHistoryItem =>
+      index === revisionIndex
+        ? {
+            ...item,
+            status: "in_progress" as const,
+          }
+        : item
+  );
+
+  await updateAdminOrder(order.dbId ?? order.id, {
+    status: isPaidRevision
+      ? "paid_revision_in_progress"
+      : "revision_in_progress",
+    revisionHistory: updatedHistory,
+    revisionRequestMessage: undefined,
+    revisionRequestedAt: undefined,
+  });
+
+  await loadAdminOrders();
+};
+
+  const renderAdmin = () => (
+  <div className={`min-h-screen p-6 ${theme.page}`}>
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <img
+            src="/frameready-logo.png"
+            alt="FrameReady logo"
+            className="w-14 cursor-pointer"
+            onClick={() => navigateTo("home")}
+          />
+
+          <div>
+            <p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>
+              Operations
+            </p>
+            <h1 className="text-2xl font-semibold text-white">
+              Admin Dashboard
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => void loadAdminOrders()}
+            className={theme.buttonSecondary}
+          >
+            Refresh Orders
+          </button>
+
+          <button
+            onClick={() => navigateTo("dashboard")}
+            className="text-sm underline text-slate-300 hover:text-white"
+          >
+            Back to Dashboard
+          </button>
+
+          <button
+            onClick={handleAdminLogout}
+            className="text-sm underline text-slate-300 hover:text-white"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
 </div>
 
         <div className="mb-8 grid gap-4 md:grid-cols-4">
@@ -2907,7 +3321,7 @@ fontFiles:
         <button
           key={order.id}
           type="button"
-          onClick={() => setSelectedAdminOrderId(order.id)}
+          onClick={() => setSelectedAdminOrderId(order.dbId ?? order.id)}
           className={`w-full rounded-2xl border p-4 text-left transition-all ${
   isSelected
     ? "border-white/40 bg-white/10 ring-2 ring-white/20"
@@ -2950,7 +3364,7 @@ fontFiles:
   </span>
 )}
 
-{order.status === "priority_revision_requested" && (
+{order.status === "paid_revision_quote_requested" && (
   <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-200">
     Paid Revision
   </span>
@@ -2981,18 +3395,24 @@ fontFiles:
             
             <span
   className={`rounded-full px-3 py-1 text-xs ${
-    order.status === "priority_revision_requested"
-      ? "border border-amber-300/20 bg-amber-400/10 text-amber-200"
-      : order.status === "revision_requested"
-      ? "border border-orange-400/20 bg-orange-500/10 text-orange-300"
-      : order.status === "ready_for_delivery"
-      ? "border border-emerald-400/20 bg-emerald-500/10"
-      : order.status === "in_progress"
-      ? theme.selectedAddon
-      : order.status === "completed"
-      ? "border border-sky-400/20 bg-sky-500/10 text-sky-300"
-      : theme.pill
-  }`}
+  order.status === "revision_requested" ||
+  order.status === "revision_in_progress" ||
+  order.status === "revision_ready_for_delivery"
+    ? "border border-orange-400/20 bg-orange-500/10 text-orange-300"
+    : order.status === "paid_revision_quote_requested" ||
+      order.status === "awaiting_priority_revision_payment" ||
+      order.status === "paid_revision_paid" ||
+      order.status === "paid_revision_in_progress" ||
+      order.status === "paid_revision_ready_for_delivery"
+    ? "border border-amber-400/30 bg-amber-500/15 text-amber-200"
+    : order.status === "ready_for_delivery"
+    ? "border border-emerald-400/20 bg-emerald-500/10"
+    : order.status === "in_progress"
+    ? theme.selectedAddon
+    : order.status === "completed"
+    ? "border border-sky-400/20 bg-sky-500/10 text-sky-300"
+    : theme.pill
+}`}
 >
   {ORDER_STATUS_LABELS[order.status as OrderStatus] || order.status}
 </span>
@@ -3031,15 +3451,13 @@ fontFiles:
                           {selectedAdminOrder.clientEmail}
                           </p>
                           <p className={`text-xs ${theme.mutedText}`}>
+  
   Ordered:{" "}
-  {selectedAdminOrder.submittedAt
-    ? new Date(selectedAdminOrder.submittedAt).toLocaleString()
-    : "Unknown"}
-  {" • "}
-  {selectedAdminOrder.submittedAt
-    ? getRelativeTime(selectedAdminOrder.submittedAt)
-    : ""}
+{selectedAdminOrder.submittedAt
+  ? new Date(selectedAdminOrder.submittedAt).toLocaleString()
+  : "Unknown"}
 </p>
+
 {(() => {
   const dueInfo = getDueInfo(selectedAdminOrder);
 
@@ -3230,18 +3648,32 @@ fontFiles:
 
   {showSourceFiles && (
     <>
-      <div className="mb-3 flex justify-end">
-        <a
-          href={
-            selectedAdminOrder.dbId
-              ? `/api/admin/orders/${selectedAdminOrder.dbId}/download-source-files`
-              : "#"
-          }
-          className="text-xs underline text-slate-300 hover:text-white"
-        >
-          Download all
-        </a>
-      </div>
+      <div className="mb-3 flex items-center justify-end gap-3">
+  {selectedAdminOrder.status === "files_received" && (
+    <button
+      type="button"
+      className={`rounded-xl px-3 py-2 text-xs ${theme.buttonPrimary}`}
+      onClick={() =>
+        updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+          status: "in_progress",
+        })
+      }
+    >
+      Start work
+    </button>
+  )}
+
+  <a
+    href={
+      selectedAdminOrder.dbId
+        ? `/api/admin/orders/${selectedAdminOrder.dbId}/download-source-files`
+        : "#"
+    }
+    className="text-xs underline text-slate-300 hover:text-white"
+  >
+    Download all
+  </a>
+</div>
 
       {(selectedAdminOrder.sourceFiles?.length ?? 0) > 0 ? (
         <ul className={`space-y-2 text-sm ${theme.softText}`}>
@@ -3311,6 +3743,19 @@ fontFiles:
   >
     <div className="flex items-center gap-2">
       <p className="font-medium text-white">Delivery files</p>
+      {selectedAdminOrder.deliveryEmailSentAt ? (
+  <p className="mt-1 text-xs text-emerald-300">
+    Sent{" "}
+    {new Date(selectedAdminOrder.deliveryEmailSentAt).toLocaleString(undefined, {
+      dateStyle: "short",
+      timeStyle: "short",
+    })}
+  </p>
+) : (
+  <p className={`mt-1 text-xs ${theme.mutedText}`}>
+    {selectedAdminOrder.deliveryFiles?.length ?? 0} files
+  </p>
+)}
       <span className={`rounded-full px-2 py-1 text-xs ${theme.pill}`}>
         {selectedAdminOrder.deliveryFiles?.length ?? 0}
       </span>
@@ -3323,52 +3768,60 @@ fontFiles:
 
   {showDeliveryFiles && (
     <>
-      {/* Upload button */}
-      <div className="mb-3 flex justify-end">
-        <label
-          className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${theme.buttonPrimary}`}
-        >
-          {isUploadingDeliveryFiles ? "Uploading..." : "Choose files"}
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleDeliveryFilesUpload}
-          />
-        </label>
-      </div>
-
-      {/* Drag & drop */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDeliveryDragOver(true);
-        }}
-        onDragLeave={() => setIsDeliveryDragOver(false)}
-        onDrop={async (e) => {
-          e.preventDefault();
-          setIsDeliveryDragOver(false);
-
-          if (e.dataTransfer.files?.length) {
-            await uploadDeliveryFiles(e.dataTransfer.files);
-          }
-        }}
-        className={`mb-3 rounded-xl border border-dashed px-4 py-5 text-center transition ${
-          isDeliveryDragOver
-            ? "border-emerald-400/50 bg-emerald-500/10"
-            : "border-white/10 bg-black/20"
-        }`}
+      {!deliveryLocked ? (
+  <>
+    {/* Upload button */}
+    <div className="mb-3 flex justify-end">
+      <label
+        className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${theme.buttonPrimary}`}
       >
-        <p className="text-sm font-medium text-white">
-          {isUploadingDeliveryFiles
-            ? "Uploading delivery files..."
-            : "Drag and drop delivery files here"}
-        </p>
+        {isUploadingDeliveryFiles ? "Uploading..." : "Choose files"}
+        <input
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleDeliveryFilesUpload}
+        />
+      </label>
+    </div>
 
-        <p className={`mt-1 text-xs ${theme.mutedText}`}>
-          Supports JPG, PNG, TIFF, PSD and ZIP
-        </p>
-      </div>
+    {/* Drag & drop */}
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDeliveryDragOver(true);
+      }}
+      onDragLeave={() => setIsDeliveryDragOver(false)}
+      onDrop={async (e) => {
+        e.preventDefault();
+        setIsDeliveryDragOver(false);
+
+        if (e.dataTransfer.files?.length) {
+          await uploadDeliveryFiles(e.dataTransfer.files);
+        }
+      }}
+      className={`mb-3 rounded-xl border border-dashed px-4 py-5 text-center transition ${
+        isDeliveryDragOver
+          ? "border-emerald-400/50 bg-emerald-500/10"
+          : "border-white/10 bg-black/20"
+      }`}
+    >
+      <p className="text-sm font-medium text-white">
+        {isUploadingDeliveryFiles
+          ? "Uploading delivery files..."
+          : "Drag and drop delivery files here"}
+      </p>
+
+      <p className={`mt-1 text-xs ${theme.mutedText}`}>
+        Supports JPG, PNG, TIFF, PSD and ZIP
+      </p>
+    </div>
+  </>
+) : (
+  <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+    Delivery email has been sent. Files are locked to prevent accidental changes.
+  </div>
+)}
 
       {/* Upload message */}
       {deliveryUploadMessage && (
@@ -3435,12 +3888,13 @@ fontFiles:
                 )}
 
                 <button
-                  type="button"
-                  onClick={() => handleDeleteDeliveryFile(file.path)}
-                  className="text-xs underline text-red-300 hover:text-red-200"
-                >
-                  Delete
-                </button>
+  type="button"
+  disabled={deliveryLocked}
+  onClick={() => handleDeleteDeliveryFile(file.path)}
+  className="text-xs underline text-red-300 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+>
+  Delete
+</button>
               </div>
             </li>
           ))}
@@ -3452,269 +3906,12 @@ fontFiles:
           No delivery files uploaded yet.
         </div>
       )}
-    </>
-  )}
-</div>
-
-<div className={`min-w-0 overflow-hidden rounded-xl p-4 ${theme.panel}`}>
-  <button
-    type="button"
-    onClick={() => setShowRevisionDeliveryFiles((prev) => !prev)}
-    className="mb-3 flex w-full items-center justify-between text-left"
-  >
-    <div className="flex items-center gap-2">
-      <p className="font-medium text-white">Revision delivery files</p>
-      <span className={`rounded-full px-2 py-1 text-xs ${theme.pill}`}>
-        {selectedAdminOrder.revisionDeliveryFiles?.length ?? 0}
-      </span>
-    </div>
-
-    <span className="text-xs text-slate-400">
-      {showRevisionDeliveryFiles ? "Hide" : "Show"}
-    </span>
-  </button>
-
-  {showRevisionDeliveryFiles && (
-    <>
-      <div className="mb-3 flex justify-end">
-        <label className={`cursor-pointer rounded-lg px-3 py-2 text-sm ${theme.buttonPrimary}`}>
-          {isUploadingRevisionDeliveryFiles ? "Uploading..." : "Choose files"}
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            onChange={async (e) => {
-              if (!e.target.files?.length) return;
-              await uploadRevisionDeliveryFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </label>
-      </div>
-
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsRevisionDeliveryDragOver(true);
-        }}
-        onDragLeave={() => setIsRevisionDeliveryDragOver(false)}
-        onDrop={async (e) => {
-          e.preventDefault();
-          setIsRevisionDeliveryDragOver(false);
-
-          if (e.dataTransfer.files?.length) {
-            await uploadRevisionDeliveryFiles(e.dataTransfer.files);
-          }
-        }}
-        className={`mb-3 rounded-xl border border-dashed px-4 py-5 text-center transition ${
-          isRevisionDeliveryDragOver
-            ? "border-emerald-400/50 bg-emerald-500/10"
-            : "border-white/10 bg-black/20"
-        }`}
-      >
-        <p className="text-sm font-medium text-white">
-          {isUploadingRevisionDeliveryFiles
-            ? "Uploading revision delivery files..."
-            : "Drag and drop revision delivery files here"}
-        </p>
-
-        <p className={`mt-1 text-xs ${theme.mutedText}`}>
-          Use this when sending updated files after a revision request.
-        </p>
-      </div>
-
-      {revisionDeliveryUploadMessage && (
-        <div
-          className={`mb-3 rounded-lg px-3 py-2 text-xs ${
-            revisionDeliveryUploadMessage.includes("successfully")
-              ? "border border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
-              : revisionDeliveryUploadMessage.includes("failed")
-              ? "border border-red-400/20 bg-red-500/10 text-red-200"
-              : "border border-sky-400/20 bg-sky-500/10 text-sky-200"
-          }`}
-        >
-          {revisionDeliveryUploadMessage}
-        </div>
-      )}
-
-      {(selectedAdminOrder.revisionDeliveryFiles?.length ?? 0) > 0 ? (
-  <>
-    <ul className={`space-y-2 text-sm ${theme.softText}`}>
-      {selectedAdminOrder.revisionDeliveryFiles.map((file) => (
-        <li
-          key={file.path || file.fileName || "revision-delivery-file"}
-          className="flex flex-col gap-2 rounded-lg border border-white/6 bg-black/20 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            {file.signedUrl && file.mimeType?.startsWith("image/") ? (
-              <img
-                src={file.signedUrl}
-                alt={file.fileName || file.path || "Revision delivery file"}
-                className="h-10 w-10 rounded-md border border-white/10 bg-slate-800 object-cover"
-              />
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-slate-800 text-[10px] text-slate-400">
-                File
-              </div>
-            )}
-
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">
-                {file.fileName || file.path}
-              </p>
-
-              <p className="mt-0.5 text-xs text-slate-400">
-                {file.mimeType || "File"}
-                {typeof file.sizeBytes === "number"
-                  ? ` · ${(file.sizeBytes / 1024 / 1024).toFixed(2)} MB`
-                  : ""}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3 self-end sm:self-auto">
-            {file.signedUrl ? (
-              <a
-                href={file.signedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs underline text-slate-300 hover:text-white"
-              >
-                Open
-              </a>
-            ) : (
-              <span className="text-xs text-slate-500">Stored</span>
-            )}
-
-            <button
-              type="button"
-              onClick={() => handleDeleteRevisionDeliveryFile(file.path)}
-              className="text-xs underline text-red-300 hover:text-red-200"
-            >
-              Delete
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
-
-    <button
-  type="button"
-  onClick={handleSendRevisionDelivery}
-  disabled={Boolean(selectedAdminOrder.revisionEmailSentAt)}
-  className={`mt-4 w-full rounded-xl px-4 py-3 text-sm ${
-    selectedAdminOrder.revisionEmailSentAt
-      ? "cursor-default bg-emerald-600 text-white"
+      <button
+  className={`mt-4 w-full rounded-xl py-3 ${
+    selectedAdminOrder?.deliveryStatus === "sent"
+      ? "bg-emerald-600 text-white"
       : theme.buttonPrimary
   }`}
->
-  {selectedAdminOrder.revisionEmailSentAt
-    ? "Revision email sent"
-    : "Send revision delivery email"}
-</button>
-  </>
-) : (
-  <div
-    className={`rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}
-  >
-    No revision delivery files uploaded yet.
-  </div>
-)}
-    </>
-  )}
-  
-</div>
-
-
-<div className={`rounded-xl px-4 py-3 ${theme.panel}`}>
-  <div className="mb-2 flex items-center justify-between">
-    <p className="text-sm font-medium text-white">Delivery tracking</p>
-
-    <span className={`rounded-full px-2 py-1 text-xs ${theme.pill}`}>
-      {selectedAdminOrder.deliveryStatus || "not_sent"}
-    </span>
-  </div>
-
-  <div className="grid gap-3 text-xs sm:grid-cols-3">
-    <div>
-      <p className={theme.mutedText}>Delivered</p>
-      <p className="text-white">
-        {selectedAdminOrder.deliveredAt
-          ? new Date(selectedAdminOrder.deliveredAt).toLocaleString(undefined, {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })
-          : "—"}
-      </p>
-    </div>
-
-    <div>
-      <p className={theme.mutedText}>Email sent</p>
-      <p className="text-white">
-        {selectedAdminOrder.deliveryEmailSentAt
-          ? new Date(selectedAdminOrder.deliveryEmailSentAt).toLocaleString(
-              undefined,
-              {
-                dateStyle: "medium",
-                timeStyle: "short",
-              }
-            )
-          : "—"}
-      </p>
-    </div>
-
-    <div>
-      <p className={theme.mutedText}>By</p>
-      <p className="break-all text-white">
-        {selectedAdminOrder.deliveredBy || "—"}
-      </p>
-    </div>
-  </div>
-</div>
-
-</div>
-
-{selectedAdminOrder.revisionRequestMessage ? (
-  <div className="mt-4 rounded-xl border border-orange-400/20 bg-orange-500/10 p-4">
-    <div className="mb-2 flex items-center justify-between">
-      <p className="font-medium text-white">Revision request</p>
-
-      <span className="text-xs text-orange-100/80">
-        {selectedAdminOrder.revisionRequestedAt
-          ? new Date(selectedAdminOrder.revisionRequestedAt).toLocaleString(
-              undefined,
-              {
-                dateStyle: "medium",
-                timeStyle: "short",
-              }
-            )
-          : "Requested"}
-      </span>
-    </div>
-
-    <p className="text-sm text-orange-50/90">
-      {selectedAdminOrder.revisionRequestMessage}
-    </p>
-
-    <button
-      type="button"
-      className={`mt-4 rounded-xl px-4 py-2 text-sm ${theme.buttonPrimary}`}
-      onClick={() =>
-        updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-          status: "in_progress",
-          revisionRequestMessage: undefined,
-          revisionRequestedAt: undefined,
-        })
-      }
-    >
-      Resume work
-    </button>
-  </div>
-) : null}
-    
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-  <button
-  className={`rounded-xl py-3 ${theme.buttonPrimary}`}
   type="button"
   disabled={
     !selectedAdminOrder ||
@@ -3724,38 +3921,480 @@ fontFiles:
   onClick={handleSendDelivery}
 >
   {selectedAdminOrder?.deliveryStatus === "sent"
-    ? "Delivery sent"
+    ? "Delivery email sent"
     : "Send delivery email"}
 </button>
+    </>
+  )}
+</div>
 
+<div className={`mt-4 rounded-2xl p-5 ${theme.panel}`}>
   <button
-    className={`rounded-xl py-3 ${theme.panel}`}
     type="button"
-    disabled={selectedAdminOrder?.status === "completed"}
-    onClick={() =>
-      selectedAdminOrder &&
-      updateAdminOrder(
-        selectedAdminOrder.dbId ?? selectedAdminOrder.id,
-        { status: "completed" }
-      )
-    }
+    onClick={() => setShowRevisionRequests((prev) => !prev)}
+    className="mb-4 flex w-full items-center justify-between text-left"
   >
-    Mark as completed
+    <div className="flex items-center gap-2">
+      <p className="font-medium text-white">Revision Requests</p>
+
+      <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
+        {selectedAdminOrder.revisionHistory?.length || 0}
+      </span>
+    </div>
+
+    <span className="text-xs text-slate-400">
+      {showRevisionRequests ? "Hide" : "Show"}
+    </span>
   </button>
 
-{selectedAdminOrder.status === "priority_revision_requested" && (
+  {showRevisionRequests ? (
+    selectedAdminOrder.revisionHistory?.length ? (
+      <div className="space-y-3">
+        {selectedAdminOrder.revisionHistory.map((item, index) => (
+          <div
+            key={`${item.createdAt}-${index}`}
+            className={`rounded-xl border border-white/10 p-4 ${theme.card}`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-medium text-white">
+                  {item.type === "revision_requested" ||
+                  item.type === "free_revision"
+                    ? `Request #${index + 1} — Free revision`
+                    : item.type === "paid_revision_quote_requested"
+                    ? "Paid revision quote requested"
+                    : item.type === "awaiting_paid_revision_payment"
+                    ? "Awaiting paid revision payment"
+                    : item.type === "paid_revision_paid"
+                    ? "Paid revision paid"
+                    : "Revision request"}
+                </p>
+
+                {item.message ? (
+                  <p className={`mt-2 text-sm ${theme.softText}`}>
+                    {item.message}
+                  </p>
+                ) : null}
+              
+
+                {item.amountUsd ? (
+                  <p className="mt-2 text-sm text-emerald-300">
+                    ${item.amountUsd.toFixed(2)} USD
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col items-end gap-2">
+  <span className={`text-xs ${theme.mutedText}`}>
+  {new Date(item.createdAt).toLocaleString()}
+</span>
+
+<span className={getRevisionHistoryBadge(item).className}>
+  {getRevisionHistoryBadge(item).label}
+</span>
+
+{item.type === "paid_revision_paid" && item.status === "paid" && (
   <button
-    className={`rounded-xl py-3 ${theme.buttonPrimary}`}
     type="button"
+    className={`mt-2 rounded-xl px-3 py-2 text-xs ${theme.buttonPrimary}`}
+    onClick={() => handleResumeRevisionWork(selectedAdminOrder, index)}
+  >
+    Resume work
+  </button>
+)}
+
+{item.status !== "completed" &&
+  item.status !== "in_progress" &&
+  item.message === selectedAdminOrder.revisionRequestMessage &&
+  item.type === "revision_requested" &&
+  selectedAdminOrder.status === "revision_requested" && (
+    <button
+      type="button"
+      className={`rounded-xl px-3 py-2 text-xs ${theme.buttonPrimary}`}
+      onClick={() =>
+        handleResumeRevisionWork(selectedAdminOrder, index)
+      }
+    >
+      Resume work
+    </button>
+  )}
+    
+</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p className={`text-sm ${theme.mutedText}`}>
+        No revision requests yet.
+      </p>
+    )
+  ) : null}
+</div>
+
+<div className={`mt-4 rounded-2xl p-5 ${theme.panel}`}>
+  <h3 className="text-lg font-semibold text-white">
+  Revision Delivery Files
+</h3>
+
+  {[
+    { type: "free_1", label: "Free Revision #1" },
+    { type: "free_2", label: "Free Revision #2" },
+    { type: "paid", label: "Paid Revision" },
+  ].map((set) => {
+  const revisionSet = (selectedAdminOrder.revisionDeliverySets || []).find(
+    (item) => item.type === set.type
+  );
+
+  const files = revisionSet?.files || [];
+
+const isPaidRevision = set.type === "paid";
+
+const revisionSetLocked =
+  !isPaidRevision && Boolean(revisionSet?.emailSentAt);
+  const isOpen = expandedRevisionDeliverySet === set.type;
+
+  return (
+    <div key={set.type} className={`mt-4 rounded-xl p-4 ${theme.card}`}>
+      <button
+        type="button"
+        onClick={() =>
+          setExpandedRevisionDeliverySet((prev) =>
+            prev === set.type ? "" : set.type
+          )
+        }
+        className="flex w-full items-center justify-between text-left"
+      >
+        <div>
+          <p className="font-medium text-white">{set.label}</p>
+
+          {revisionSet?.emailSentAt ? (
+            <p className="mt-1 text-xs text-emerald-300">
+              Sent {new Date(revisionSet.emailSentAt).toLocaleString()}
+            </p>
+          ) : (
+            <p className={`mt-1 text-xs ${theme.mutedText}`}>
+              {files.length} file{files.length !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+
+        <span className="text-xs text-slate-400">
+          {isOpen ? "Hide" : "Show"}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="mt-4">
+          {!revisionSetLocked ? (
+  <div
+    onDragOver={(e) => {
+      e.preventDefault();
+      setExpandedRevisionDeliverySet(set.type);
+    }}
+    onDrop={async (e) => {
+      e.preventDefault();
+
+      if (!e.dataTransfer.files?.length) return;
+
+      await uploadRevisionDeliverySetFiles(
+        set.type as "free_1" | "free_2" | "paid",
+        set.label,
+        e.dataTransfer.files
+      );
+    }}
+    className="rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-5 text-center transition hover:border-cyan-300/40"
+  >
+    <p className="text-sm font-medium text-white">
+      Drag & drop files here
+    </p>
+
+    <p className={`mt-1 text-xs ${theme.mutedText}`}>
+      Or choose files for {set.label}
+    </p>
+
+    <label
+      className={`mt-3 inline-flex cursor-pointer rounded-lg px-3 py-2 text-sm ${theme.buttonPrimary}`}
+    >
+      {isUploadingRevisionDeliveryFiles ? "Uploading..." : "Choose files"}
+
+      <input
+        type="file"
+        multiple
+        className="hidden"
+        onChange={async (e) => {
+          if (!e.target.files?.length) return;
+
+          await uploadRevisionDeliverySetFiles(
+            set.type as "free_1" | "free_2" | "paid",
+            set.label,
+            e.target.files
+          );
+
+          e.target.value = "";
+        }}
+      />
+    </label>
+  </div>
+) : (
+  <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+    Revision delivery email sent. Files are locked.
+  </div>
+)}
+
+          {files.length > 0 ? (
+            <div className="mt-3 grid gap-3">
+  {files.map((file) => {
+    const fileUrl = file.signedUrl || file.publicUrl;
+    const isImage = file.mimeType?.startsWith("image/");
+    const fileIdentifier = file.path || file.fileName || undefined;
+
+    return (
+      <div
+  key={file.path || file.fileName}
+  className="flex items-center justify-between gap-4 rounded-lg border border-white/6 bg-black/20 p-4"
+>
+  <div className="flex min-w-0 flex-1 items-center gap-3">
+    {isImage && fileUrl ? (
+      <img
+        src={fileUrl}
+        alt={file.fileName || "Revision delivery file"}
+        className="h-14 w-14 shrink-0 rounded-lg object-cover"
+      />
+    ) : (
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[10px] text-slate-400">
+        FILE
+      </div>
+    )}
+
+    <div className="min-w-0 flex-1">
+      <p className="break-all text-sm font-medium text-white">
+        {file.fileName || file.path}
+      </p>
+
+      <p className="mt-1 text-xs text-slate-500">
+        {file.mimeType || "Uploaded file"}
+      </p>
+    </div>
+  </div>
+
+  <div className="flex shrink-0 items-center gap-4">
+    {fileUrl ? (
+      <a
+        href={fileUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs underline text-slate-300 hover:text-white"
+      >
+        Open
+      </a>
+    ) : (
+      <span className="text-xs text-slate-500">
+        Stored
+      </span>
+    )}
+
+    <button
+  type="button"
+  disabled={
+    !fileIdentifier ||
+    (set.type !== "paid" && Boolean(revisionSet?.emailSentAt))
+  }
+  onClick={() =>
+    fileIdentifier &&
+    handleDeleteRevisionDeliverySetFile(
+      set.type as "free_1" | "free_2" | "paid",
+      fileIdentifier
+    )
+  }
+  className="text-xs underline text-red-300 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-40"
+>
+  Delete
+</button>
+  </div>
+</div>
+    );
+  })}
+</div>
+          ) : (
+            <div
+              className={`mt-3 rounded-lg border border-dashed border-white/10 bg-black/20 px-3 py-6 text-sm ${theme.mutedText}`}
+            >
+              No files uploaded for this revision yet.
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={files.length === 0 || Boolean(revisionSet?.emailSentAt)}
+            onClick={() =>
+              handleSendRevisionDeliverySetEmail(
+                set.type as "free_1" | "free_2" | "paid",
+                set.label
+              )
+            }
+            className={`mt-4 w-full rounded-xl px-4 py-3 text-sm ${
+              revisionSet?.emailSentAt
+                ? "cursor-default bg-emerald-600 text-white"
+                : files.length === 0
+                ? "cursor-not-allowed bg-white/10 text-white/40"
+                : theme.buttonPrimary
+            }`}
+          >
+            {revisionSet?.emailSentAt
+              ? "Revision delivery email sent"
+              : `Send ${set.label} delivery email`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+})}
+
+  {revisionDeliveryUploadMessage && (
+    <div className="mt-4 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
+      {revisionDeliveryUploadMessage}
+    </div>
+  )}
+</div>
+
+<button
+  type="button"
+  onClick={() => setShowDeliveryTracking((prev) => !prev)}
+  className="mb-2 flex w-full items-center justify-between text-left"
+>
+  <div className="flex items-center gap-2">
+    <p className="text-sm font-medium text-white">
+      Delivery tracking
+    </p>
+
+    <span className={`rounded-full px-2 py-1 text-xs ${theme.pill}`}>
+      {selectedAdminOrder.deliveryStatus || "not_sent"}
+    </span>
+  </div>
+
+  <span className="text-xs text-slate-400">
+    {showDeliveryTracking ? "Hide" : "Show"}
+  </span>
+</button>
+
+  {showDeliveryTracking && (
+  <>
+    <div className="grid gap-3 text-xs sm:grid-cols-3">
+      <div>
+        <p className={theme.mutedText}>Delivered</p>
+        <p className="text-white">
+          {selectedAdminOrder.deliveredAt
+            ? new Date(selectedAdminOrder.deliveredAt).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : "—"}
+        </p>
+      </div>
+
+      <div>
+        <p className={theme.mutedText}>Email sent</p>
+        <p className="text-white">
+          {selectedAdminOrder.deliveryEmailSentAt
+            ? new Date(selectedAdminOrder.deliveryEmailSentAt).toLocaleString(
+                undefined,
+                {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }
+              )
+            : "—"}
+        </p>
+      </div>
+
+      <div>
+        <p className={theme.mutedText}>By</p>
+        <p className="break-all text-white">
+          {selectedAdminOrder.deliveredBy || "—"}
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-4 border-t border-white/10 pt-4">
+      <p className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-400">
+        Revision deliveries
+      </p>
+
+      <div className="space-y-2">
+        {(selectedAdminOrder.revisionDeliverySets || []).map((set) => (
+          <div
+            key={set.type}
+            className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2"
+          >
+            <span className="text-sm text-white">{set.label}</span>
+
+            <span className="text-xs text-slate-400">
+              {set.emailSentAt
+                ? `Sent ${new Date(set.emailSentAt).toLocaleString(undefined, {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}`
+                : "Not sent"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </>
+)}
+
+{selectedAdminOrder.status === "paid_revision_quote_requested" && (
+  <div className={`mt-4 rounded-xl p-4 ${theme.panel}`}>
+    <p className="font-medium text-white">Paid revision quote requested</p>
+
+    <p className={`mt-1 text-sm ${theme.mutedText}`}>
+      Review the request, enter a custom price, then send the payment link.
+    </p>
+
+    <input
+      type="number"
+      min="1"
+      value={paidRevisionAmount}
+      onChange={(e) => setPaidRevisionAmount(e.target.value)}
+      placeholder="Amount in USD"
+      className="mt-4 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-white"
+    />
+
+    <button
+      type="button"
+      onClick={handleSendPaidRevisionPaymentLink}
+      className={`mt-3 w-full rounded-xl px-4 py-3 ${theme.buttonPrimary}`}
+    >
+      Send paid revision payment link
+    </button>
+
+    {paidRevisionQuoteMessage && (
+      <p className="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+        {paidRevisionQuoteMessage}
+      </p>
+    )}
+  </div>
+)}
+
+{selectedAdminOrder.status === "paid_revision_paid" && (
+  <button
+    type="button"
+    className={`mt-4 rounded-xl px-4 py-3 ${theme.buttonPrimary}`}
     onClick={() =>
-      updateAdminOrder(
-        selectedAdminOrder.dbId ?? selectedAdminOrder.id,
-        { status: "in_progress" }
-      )
+      updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+        status: "paid_revision_in_progress",
+      })
     }
   >
-    Start paid revision
+    Resume paid revision work
   </button>
+)}
+
+{selectedAdminOrder.status === "paid_revision_in_progress" && (
+  <span className="mt-4 inline-flex rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-200">
+    In progress
+  </span>
 )}
 
 </div>
@@ -3763,7 +4402,6 @@ fontFiles:
 ) : (
   <p className={theme.mutedText}>No order selected.</p>
 )}
-</div>
 </div>
 </div>
 </div>

@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     title: "FrameReady",
     description:
       "Professional artwork QC & formatting for streaming platforms.",
-    url: "https://www.framereadystudio.com",
+    url: "https://framereadystudio.com",
     siteName: "FrameReady",
     images: [
       {

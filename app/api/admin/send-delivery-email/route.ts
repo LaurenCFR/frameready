@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { orderId, deliveryType } = await request.json();
+    const { orderId, deliveryType, revisionType } = await request.json();
 const isRevisionDelivery = deliveryType === "revision";
 
     if (!orderId) {
@@ -103,9 +103,16 @@ const { data: order, error: fetchError } = orderId.startsWith("FR-")
 
     const orderLabel = order.public_order_id || order.id;
     const clientName = order.client_name || "there";
-    const deliveryUrl = `${getSiteUrl()}/delivery/${deliveryToken}`;
+    const deliverySet =
+  deliveryType === "revision" && revisionType
+    ? revisionType
+    : "initial";
 
-    const emailHtml = `
+const deliveryUrl =
+  `${getSiteUrl()}/delivery/${deliveryToken}` +
+  `?deliverySet=${deliverySet}`;
+
+const emailHtml = `
       <div style="margin:0;padding:0;background:#020617;font-family:Inter,Arial,sans-serif;color:#e2e8f0;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#020617;padding:32px 16px;">
           <tr>
@@ -180,6 +187,8 @@ const { data: order, error: fetchError } = orderId.startsWith("FR-")
   : `Your FrameReady delivery is ready – ${orderLabel}`,
   html: emailHtml,
 });
+
+console.log("Delivery email result:", emailResult);
 
     if ((emailResult as { error?: { message?: string } | null }).error) {
       return NextResponse.json(

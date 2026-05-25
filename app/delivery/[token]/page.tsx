@@ -6,6 +6,11 @@ import DeliveryArtworkGrid from "@/components/DeliveryArtworkGrid";
 
 type DeliveryPageProps = {
   params: Promise<{ token: string }>;
+
+  searchParams?: Promise<{
+    deliverySet?: string;
+    revisionSet?: string;
+  }>;
 };
 
 type DeliveryFileWithUrl = UploadedFileRecord & {
@@ -16,36 +21,81 @@ function labelFromFile(file: UploadedFileRecord): string {
   return file.fileName || file.path || "Download file";
 }
 
-export default async function DeliveryPage({ params }: DeliveryPageProps) {
+export default async function DeliveryPage({
+  params,
+  searchParams,
+}: DeliveryPageProps) {
   const { token } = await params;
+  const resolvedSearchParams = await searchParams;
   const supabase = createSupabaseAdminClient();
 
-  const { data: order, error } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("delivery_token", token)
-    .maybeSingle();
+const { data: order, error } = await supabase
+  .from("orders")
+  .select("*")
+  .eq("delivery_token", token)
+  .maybeSingle();
 
-  if (error) {
-    return (
-      <main style={{ minHeight: "100vh", background: "#020617", color: "white", padding: "40px" }}>
-        <h1>Delivery page error</h1>
-        <p>{error.message}</p>
-      </main>
-    );
-  }
+if (error) {
+  return (
+    <main style={{ minHeight: "100vh", background: "#020617", color: "white", padding: "40px" }}>
+      <h1>Delivery page error</h1>
+      <p>{error.message}</p>
+    </main>
+  );
+}
 
-  if (!order) {
-    notFound();
-  }
+if (!order) {
+  notFound();
+}
 
-  const deliveryFiles =
-  Array.isArray(order.revision_delivery_files) &&
-  order.revision_delivery_files.length > 0
-    ? order.revision_delivery_files
-    : Array.isArray(order.delivery_files)
-    ? order.delivery_files
-    : [];
+const requestedDeliverySet =
+  resolvedSearchParams?.deliverySet ||
+  resolvedSearchParams?.revisionSet ||
+  "initial";
+
+  const hasPendingRevision =
+  order.order_status === "revision_requested" ||
+  order.order_status === "in_progress" ||
+  order.order_status === "ready_for_delivery";
+
+  const revisionLimit =
+  order.revision_limit != null
+    ? Number(order.revision_limit)
+    : order.package_id === "essential"
+    ? 1
+    : 2;
+
+const revisionCount = Number(order.revision_count ?? 0);
+
+const latestFreeRevisionDelivered =
+  revisionLimit < 2 ||
+  (Array.isArray(order.revision_delivery_sets)
+    ? order.revision_delivery_sets.some(
+        (set: any) => set.type === "free_2" && set.emailSentAt
+      )
+    : false);
+
+const canRequestPaidRevision =
+  revisionCount >= revisionLimit &&
+  latestFreeRevisionDelivered &&
+  !hasPendingRevision;
+
+const selectedDeliverySet = Array.isArray(order.delivery_sets)
+  ? order.delivery_sets.find(
+      (set: any) => set.type === requestedDeliverySet
+    )
+  : null;
+
+const deliveryFiles: UploadedFileRecord[] = selectedDeliverySet?.files?.length
+  ? (selectedDeliverySet.files as UploadedFileRecord[])
+  : requestedDeliverySet !== "initial" &&
+    Array.isArray(order.revision_delivery_sets)
+  ? ((order.revision_delivery_sets.find(
+      (set: any) => set.type === requestedDeliverySet
+    )?.files || []) as UploadedFileRecord[])
+  : Array.isArray(order.delivery_files)
+  ? (order.delivery_files as UploadedFileRecord[])
+  : [];
 
   const deliveryFilesWithUrls: DeliveryFileWithUrl[] = await Promise.all(
   deliveryFiles.map(async (file: UploadedFileRecord) => {
@@ -142,7 +192,7 @@ const otherFiles = deliveryFiles.filter(
                 <h2 className="text-base font-medium text-white">Delivered files</h2>
 
                 <a
-                  href={`/api/delivery/${token}/download-all`}
+                  href={`/api/delivery/${token}/download-all?deliverySet=${requestedDeliverySet}`}
                   className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                 >
                   Download all
@@ -198,6 +248,7 @@ const otherFiles = deliveryFiles.filter(
         </div>
       </div>
     )}
+    
 
   </div>
 ) : (
@@ -206,27 +257,37 @@ const otherFiles = deliveryFiles.filter(
   </p>
 )}
 
+
               <p className="mt-3 text-xs text-slate-500">
                 Download links refresh automatically if they expire.
               </p>
             </div>
+            
 
-return (
+            {hasPendingRevision ? (
+  <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-5">
+    <h2 className="text-lg font-medium text-white">
+      Revision in progress
+    </h2>
 
-            <DeliveryRevisionForm
+    <p className="mt-2 text-sm text-amber-100/80">
+      Your revision request is currently being worked on.
+      You’ll be able to request another revision after
+      the updated files are delivered.
+    </p>
+  </div>
+) : (
+  <DeliveryRevisionForm
   token={token}
-  revisionCount={Number(order.revision_count ?? 0)}
-  revisionLimit={
-  order.revision_limit != null
-    ? Number(order.revision_limit)
-    : order.package_id === "essential"
-    ? 1
-    : 2
-}
+  revisionCount={revisionCount}
+  revisionLimit={revisionLimit}
+  canRequestPaidRevision={canRequestPaidRevision}
   orderId={order.public_order_id || order.id}
   clientName={order.client_name || "Client"}
   clientEmail={order.client_email || ""}
+  orderStatus={order.order_status}
 />
+)}
 
 <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/50 p-5 text-sm text-slate-400">
   You can also reply to the delivery email if you prefer.

@@ -27,7 +27,7 @@ function getTurnaround(status: OrderStatus): string {
 
     case "in_progress":
     case "revision_requested":
-    case "priority_revision_requested":
+    case "paid_revision_quote_requested":
       return "In Progress";
 
     case "ready_for_delivery":
@@ -100,8 +100,9 @@ export async function GET() {
         );
 
         return {
-          id: order.public_order_id || order.id,
-          dbId: order.id,
+  id: order.id,
+  publicOrderId: order.public_order_id || order.id,
+  dbId: order.id,
           clientName: order.client_name || "Unknown Client",
           clientEmail: order.client_email || "",
           packageName: order.package_name,
@@ -113,6 +114,9 @@ export async function GET() {
           languages: order.localized_languages || [],
           addOns: order.add_on_labels || [],
           sourceFiles,
+          revision_delivery_sets: order.revision_delivery_sets ?? [],
+          delivery_sets: order.delivery_sets ?? [],
+          revision_history: order.revision_history ?? [],
           deliveryFiles: await Promise.all(
   ((order.delivery_files || []) as any[]).map(async (file) => {
     if (!file?.bucket || !file?.path) {

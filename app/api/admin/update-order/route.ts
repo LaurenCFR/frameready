@@ -23,7 +23,20 @@ type UpdateOrderBody = {
   revisionRequestMessage?: string | null;
   revisionRequestedAt?: string | null;
   revisionDeliveryFiles?: import("@/types/order").UploadedFileRecord[];
+  deliverySets?: {
+  type: string;
+  label: string;
+  files: import("@/types/order").UploadedFileRecord[];
+  sentAt?: string | null;
+}[];
+  revisionDeliverySets?: {
+  type: string;
+  label: string;
+  files: import("@/types/order").UploadedFileRecord[];
+  emailSentAt?: string | null;
+}[];
   revisionEmailSentAt?: string | null;
+  revisionHistory?: import("@/types/order").RevisionHistoryItem[];
 };
 
 import { requireAdminSession } from "@/lib/admin-auth";
@@ -45,12 +58,47 @@ if (!session.authenticated) {
     };
 
     if (body.status !== undefined) {
-      if (!isOrderStatus(body.status)) {
-        return NextResponse.json({ error: "Invalid status." }, { status: 400 });
-      }
+  if (!isOrderStatus(body.status)) {
+    return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+  }
 
+  const isTryingToDowngradePaidRevisionToFilesReceived =
+    body.status === "files_received";
+
+  if (isTryingToDowngradePaidRevisionToFilesReceived) {
+    const supabase = createSupabaseAdminClient();
+
+    const { data: existingOrder } = body.orderId.startsWith("FR-")
+      ? await supabase
+          .from("orders")
+          .select("order_status, revision_history")
+          .eq("public_order_id", body.orderId)
+          .single()
+      : await supabase
+          .from("orders")
+          .select("order_status, revision_history")
+          .eq("id", body.orderId)
+          .single();
+
+    const hasPaidRevisionHistory =
+      Array.isArray(existingOrder?.revision_history) &&
+      existingOrder.revision_history.some(
+        (item: any) => item.type === "paid_revision_paid"
+      );
+
+    if (
+      existingOrder?.order_status?.startsWith("paid_revision") ||
+      existingOrder?.order_status === "awaiting_priority_revision_payment" ||
+      hasPaidRevisionHistory
+    ) {
+      updates.order_status = "paid_revision_paid";
+    } else {
       updates.order_status = body.status;
     }
+  } else {
+    updates.order_status = body.status;
+  }
+}
 
     if (body.notes !== undefined) {
       updates.notes = body.notes;
@@ -60,8 +108,12 @@ if (!session.authenticated) {
   updates.delivery_files = body.deliveryFiles;
 }
 
-if (body.revisionDeliveryFiles !== undefined) {
-  updates.revision_delivery_files = body.revisionDeliveryFiles;
+if (body.deliverySets !== undefined) {
+  updates.delivery_sets = body.deliverySets;
+}
+
+if (body.revisionDeliverySets !== undefined) {
+  updates.revision_delivery_sets = body.revisionDeliverySets;
 }
 
 if (body.deliveredAt !== undefined) {
@@ -96,19 +148,37 @@ if (body.revisionEmailSentAt !== undefined) {
   updates.revision_email_sent_at = body.revisionEmailSentAt || null;
 }
 
+if (body.revisionHistory !== undefined) {
+  updates.revision_history = body.revisionHistory;
+}
+
     const supabase = createSupabaseAdminClient();
 
-    const updateQuery = supabase.from("orders").update(updates);
+    console.log("Update order payload:", {
+  orderId: body.orderId,
+  revisionDeliverySets: body.revisionDeliverySets,
+  updates,
+});
+
+const query = supabase
+  .from("orders")
+  .update(updates)
+  .select(`
+  id,
+  public_order_id,
+  client_email,
+  client_name,
+  package_name,
+  revision_request_message,
+  revision_delivery_sets,
+  revision_history,
+  order_status,
+updated_at
+`);
 
 const { data, error } = body.orderId.startsWith("FR-")
-  ? await updateQuery
-      .eq("public_order_id", body.orderId)
-      .select()
-      .single()
-  : await updateQuery
-      .eq("id", body.orderId)
-      .select()
-      .single();
+  ? await query.eq("public_order_id", body.orderId).single()
+  : await query.eq("id", body.orderId).single();
 
     if (error) {
   return NextResponse.json({ error: error.message }, { status: 500 });
@@ -116,7 +186,7 @@ const { data, error } = body.orderId.startsWith("FR-")
 
 const isRevisionStatus =
   data.order_status === "revision_requested" ||
-  data.order_status === "priority_revision_requested";
+  data.order_status === "paid_revision_quote_requested";
 
 if (
   isRevisionStatus &&
@@ -124,7 +194,7 @@ if (
   process.env.RESEND_API_KEY &&
   process.env.DELIVERY_FROM_EMAIL
 ) {
-  const isPriority = data.order_status === "priority_revision_requested";
+  const isPriority = data.order_status === "paid_revision_quote_requested";
   const orderLabel = data.public_order_id || data.id;
 
   try {

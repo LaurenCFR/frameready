@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const { data: order, error: fetchError } = await supabase
       .from("orders")
-      .select("id, package_id, revision_count, revision_limit")
+      .select("id, package_id, revision_count, revision_limit, revision_history")
       .eq("delivery_token", token)
       .maybeSingle();
 
@@ -39,38 +39,33 @@ const revisionLimit =
     ? 1
     : 2;
 
-if (revisionCount >= revisionLimit) {
-  return NextResponse.json(
-    {
-      error:
-        "This order has reached its included revision limit. Please reply to the delivery email for additional revision options.",
-    },
-    { status: 403 }
-  );
-}
-
-    const { error: updateError } = await supabase
+const { error: updateError } = await supabase
   .from("orders")
   .update({
-    order_status: "revision_requested",
+    order_status:
+  revisionCount + 1 > revisionLimit
+    ? "paid_revision_quote_requested"
+    : "revision_requested",
+    revision_history: [
+      ...(Array.isArray(order.revision_history)
+        ? order.revision_history
+        : []),
+
+      {
+        type:
+  revisionCount + 1 > revisionLimit
+    ? "paid_revision_quote_requested"
+    : "revision_requested",
+        message: message || "",
+        createdAt: now,
+      },
+    ],    
     revision_requested_at: now,
     revision_request_message: message || null,
     revision_count: revisionCount + 1,
-
-    // ✅ optional but recommended
-    delivered_at: null,
-    delivery_status: "not_sent",
-
     updated_at: now,
   })
   .eq("id", order.id);
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: updateError.message },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

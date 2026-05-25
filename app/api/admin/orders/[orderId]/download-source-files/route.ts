@@ -20,15 +20,25 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const { orderId } = await context.params;
     const supabase = createSupabaseAdminClient();
 
-    const { data: order, error } = await supabase
+    const { data: orderById } = await supabase
+  .from("orders")
+  .select("*")
+  .eq("id", orderId)
+  .maybeSingle();
+
+const { data: orderByPublicId } = orderById
+  ? { data: null }
+  : await supabase
       .from("orders")
       .select("*")
-      .eq("id", orderId)
-      .single();
+      .eq("public_order_id", orderId)
+      .maybeSingle();
 
-    if (error || !order) {
-      return NextResponse.json({ error: "Order not found." }, { status: 404 });
-    }
+const order = orderById || orderByPublicId;
+
+if (!order) {
+  return NextResponse.json({ error: "Order not found." }, { status: 404 });
+}
 
     const files = order.uploaded_files || [];
 

@@ -9,9 +9,12 @@ type RouteContext = {
   params: Promise<{ token: string }>;
 };
 
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { token } = await context.params;
+    const deliverySet =
+  _request.nextUrl.searchParams.get("deliverySet") || "initial";
     const supabase = createSupabaseAdminClient();
 
     const { data: order, error } = await supabase
@@ -24,9 +27,18 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Delivery not found." }, { status: 404 });
     }
 
-    const deliveryFiles: UploadedFileRecord[] = Array.isArray(order.delivery_files)
-      ? (order.delivery_files as UploadedFileRecord[])
-      : [];
+    const selectedDeliverySet = Array.isArray(order.delivery_sets)
+  ? order.delivery_sets.find(
+      (set: any) => set.type === deliverySet
+    )
+  : null;
+
+const deliveryFiles: UploadedFileRecord[] =
+  selectedDeliverySet?.files?.length
+    ? selectedDeliverySet.files
+    : Array.isArray(order.delivery_files)
+    ? (order.delivery_files as UploadedFileRecord[])
+    : [];
 
     if (deliveryFiles.length === 0) {
       return NextResponse.json({ error: "No delivery files found." }, { status: 400 });

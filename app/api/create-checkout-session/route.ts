@@ -84,10 +84,11 @@ export async function POST(request: Request) {
       customer_email: order.client_email ?? undefined,
       client_reference_id: order.id,
       metadata: {
-        orderId: order.id,
-        publicOrderId: order.public_order_id ?? "",
-        packageId: order.package_id,
-      },
+  orderId: order.id,
+  publicOrderId: order.public_order_id ?? "",
+  packageId: order.package_id,
+  paymentType: "initial_order",
+},
       line_items: [
         {
           quantity: 1,

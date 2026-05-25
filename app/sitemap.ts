@@ -1,7 +1,7 @@
 export default function sitemap() {
   return [
     {
-      url: "https://www.framereadystudio.com",
+      url: "https://framereadystudio.com",
       lastModified: new Date(),
     },
   ];
