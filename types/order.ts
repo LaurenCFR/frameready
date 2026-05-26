@@ -221,7 +221,7 @@ export type DeliverySet = {
 };
 
 export type RevisionDeliverySet = {
-  type: "free_1" | "free_2" | "paid";
+  type: string;
   label: string;
   files: UploadedFileRecord[];
   emailSentAt?: string | null;

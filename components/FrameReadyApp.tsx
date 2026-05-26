@@ -580,7 +580,6 @@ const hasExpressDelivery = (order: AdminOrder) =>
   );
 });
 
-console.log("adminFilter:", adminFilter);
 console.log(
   "adminOrders statuses:",
   adminOrders.map((order: AdminOrder) => ({
@@ -662,13 +661,6 @@ const whatYouReceiveItems = Array.from(
 
 const deliveryLocked =
   selectedAdminOrder?.deliveryStatus === "sent";
-
-console.log("SELECTED ORDER DEBUG:", {
-  selectedAdminOrderId,
-  selectedId: selectedAdminOrder?.id,
-  selectedDbId: selectedAdminOrder?.dbId,
-  revisionDeliverySets: selectedAdminOrder?.revisionDeliverySets,
-});
 
   useEffect(() => {
   if (selectedAdminOrder?.id) {
@@ -970,7 +962,7 @@ const nextDeliverySets = [
 };
 
 const handleSendRevisionDelivery = async (
-  revisionType?: "free_1" | "free_2" | "paid"
+  revisionType?: string
 ) => {
   if (!selectedAdminOrder) return;
 
@@ -1070,7 +1062,7 @@ const handleSendPaidRevisionPaymentLink = async () => {
 };
 
 const handleDeleteRevisionDeliverySetFile = async (
-  setType: "free_1" | "free_2" | "paid",
+  setType: string,
   fileIdentifier?: string
 ) => {
   if (!selectedAdminOrder || !fileIdentifier) return;
@@ -1101,7 +1093,7 @@ const handleDeleteRevisionDeliverySetFile = async (
 };
 
 const handleSendRevisionDeliverySetEmail = async (
-  setType: "free_1" | "free_2" | "paid",
+  setType: string,
   label: string
 ) => {
   if (!selectedAdminOrder) return;
@@ -1112,7 +1104,7 @@ const handleSendRevisionDeliverySetEmail = async (
     const revisionHistory = selectedAdminOrder.revisionHistory || [];
 
 const latestActiveRevisionIndex = revisionHistory.findLastIndex((item) => {
-  if (setType === "paid") {
+  if (setType.startsWith("paid")) {
     return (
       item.type === "paid_revision_paid" &&
       item.status === "in_progress"
@@ -1158,9 +1150,7 @@ const updatedRevisionHistory =
     );
 
     const nextDeliverySets = [
-  ...(selectedAdminOrder.deliverySets || []).filter(
-    (set) => set.type !== setType
-  ),
+  ...(selectedAdminOrder.deliverySets || []),
   {
     type: setType,
     label,
@@ -1168,16 +1158,6 @@ const updatedRevisionHistory =
     sentAt: now,
   },
 ];
-
-console.log(
-  "Saving paid revision completed history:",
-  JSON.stringify(updatedRevisionHistory, null, 2)
-);
-
-console.log(
-  "latestActiveRevisionIndex:",
-  latestActiveRevisionIndex
-);
 
 await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
       revisionDeliveryFiles: filesToSend,
@@ -1320,7 +1300,7 @@ console.log("Next delivery files:", nextFiles);
 };
 
 const uploadRevisionDeliverySetFiles = async (
-  setType: "free_1" | "free_2" | "paid",
+  setType: string,
   label: string,
   fileList: FileList | File[]
 ) => {
@@ -1339,11 +1319,29 @@ const uploadRevisionDeliverySetFiles = async (
     );
 
     const existingSets = selectedAdminOrder.revisionDeliverySets || [];
-    const existingSet = existingSets.find((set) => set.type === setType);
+
+const paidRevisionDeliveryCount =
+  (selectedAdminOrder.deliverySets ?? []).filter(
+    (set) =>
+      typeof set.type === "string" &&
+      set.type.startsWith("paid")
+  ).length;
+
+const paidRevisionNumber = paidRevisionDeliveryCount + 1;
+
+const actualSetType = setType.startsWith("paid")
+  ? `paid_${paidRevisionNumber}`
+  : setType;
+
+const actualLabel = setType.startsWith("paid")
+  ? `Paid Revision #${paidRevisionNumber}`
+  : label;
+
+const existingSet = existingSets.find((set) => set.type === actualSetType);
 
     const nextSets = existingSet
       ? existingSets.map((set) =>
-          set.type === setType
+          set.type === actualSetType
             ? {
                 ...set,
                 files: [...(set.files || []), ...uploadedFiles],
@@ -1353,18 +1351,21 @@ const uploadRevisionDeliverySetFiles = async (
       : [
           ...existingSets,
           {
-            type: setType,
-            label,
-            files: uploadedFiles,
-            emailSentAt: null,
+            type: actualSetType,
+        label: actualLabel,
+        files: uploadedFiles,
+        emailSentAt: null,
           },
         ];
 
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-      revisionDeliverySets: nextSets,
-      revisionEmailSentAt: "",
-      status: "ready_for_delivery",
-    });
+  revisionDeliverySets: nextSets,
+  revisionEmailSentAt: "",
+  status:
+    selectedAdminOrder.status === "paid_revision_in_progress"
+      ? "paid_revision_ready_for_delivery"
+      : "ready_for_delivery",
+});
 
     console.log("Saving revisionDeliverySets:", nextSets);
 
@@ -1537,7 +1538,6 @@ uploadedRecords.push({
 };
 
 const handleProceedToPayment = async () => {
-  console.log("Proceed clicked");
 console.log("uploadedArtworkFiles:", uploadedArtworkFiles);
 console.log("clientName:", clientName);
 console.log("clientEmail:", clientEmail);
@@ -1619,7 +1619,6 @@ if (!updateRes.ok) {
     });
 
     const checkoutJson = await checkoutRes.json();
-    console.log("checkout response:", checkoutJson);
 
     if (!checkoutRes.ok || !checkoutJson?.url) {
       throw new Error(
@@ -3649,19 +3648,19 @@ const handleResumeRevisionWork = async (
   {showSourceFiles && (
     <>
       <div className="mb-3 flex items-center justify-end gap-3">
-  {selectedAdminOrder.status === "files_received" && (
-    <button
-      type="button"
-      className={`rounded-xl px-3 py-2 text-xs ${theme.buttonPrimary}`}
-      onClick={() =>
-        updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
-          status: "in_progress",
-        })
-      }
-    >
-      Start work
-    </button>
-  )}
+  {["files_received", "paid"].includes(selectedAdminOrder.status) && (
+  <button
+    type="button"
+    className={`rounded-xl px-3 py-2 text-xs ${theme.buttonPrimary}`}
+    onClick={() =>
+      updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+        status: "in_progress",
+      })
+    }
+  >
+    Start work
+  </button>
+)}
 
   <a
     href={
@@ -4038,10 +4037,22 @@ const handleResumeRevisionWork = async (
 </h3>
 
   {[
-    { type: "free_1", label: "Free Revision #1" },
-    { type: "free_2", label: "Free Revision #2" },
-    { type: "paid", label: "Paid Revision" },
-  ].map((set) => {
+  { type: "free_1", label: "Free Revision #1" },
+  { type: "free_2", label: "Free Revision #2" },
+
+  ...(
+    selectedAdminOrder.revisionDeliverySets?.some((set) =>
+      set.type?.startsWith("paid_")
+    )
+      ? selectedAdminOrder.revisionDeliverySets
+          .filter((set) => set.type?.startsWith("paid_"))
+          .map((set) => ({
+            type: set.type,
+            label: set.label || "Paid Revision",
+          }))
+      : [{ type: "paid_1", label: "Paid Revision #1" }]
+  ),
+].map((set) => {
   const revisionSet = (selectedAdminOrder.revisionDeliverySets || []).find(
     (item) => item.type === set.type
   );
@@ -4098,7 +4109,7 @@ const revisionSetLocked =
       if (!e.dataTransfer.files?.length) return;
 
       await uploadRevisionDeliverySetFiles(
-        set.type as "free_1" | "free_2" | "paid",
+        set.type,
         set.label,
         e.dataTransfer.files
       );
@@ -4126,7 +4137,7 @@ const revisionSetLocked =
           if (!e.target.files?.length) return;
 
           await uploadRevisionDeliverySetFiles(
-            set.type as "free_1" | "free_2" | "paid",
+            set.type,
             set.label,
             e.target.files
           );
@@ -4203,7 +4214,7 @@ const revisionSetLocked =
   onClick={() =>
     fileIdentifier &&
     handleDeleteRevisionDeliverySetFile(
-      set.type as "free_1" | "free_2" | "paid",
+      set.type,
       fileIdentifier
     )
   }
@@ -4229,7 +4240,7 @@ const revisionSetLocked =
             disabled={files.length === 0 || Boolean(revisionSet?.emailSentAt)}
             onClick={() =>
               handleSendRevisionDeliverySetEmail(
-                set.type as "free_1" | "free_2" | "paid",
+                set.type,
                 set.label
               )
             }
