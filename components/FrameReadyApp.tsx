@@ -1274,6 +1274,7 @@ const uploadDeliveryFiles = async (fileList: FileList | File[]) => {
     await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
       deliveryFiles: nextFiles,
       deliveryStatus: "ready_to_send",
+      status: "ready_for_delivery",
     });
 
     setDeliveryUploadMessage("Delivery files uploaded successfully.");
@@ -1284,8 +1285,6 @@ const uploadDeliveryFiles = async (fileList: FileList | File[]) => {
 
     await loadAdminOrders();
 
-console.log("Uploaded delivery files:", uploadedFiles);
-console.log("Next delivery files:", nextFiles);
   } catch (error) {
     console.error("Delivery upload failed", error);
 
@@ -1358,13 +1357,17 @@ const existingSet = existingSets.find((set) => set.type === actualSetType);
           },
         ];
 
-    await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
+    const nextStatus =
+  selectedAdminOrder.status === "paid_revision_in_progress"
+    ? "paid_revision_ready_for_delivery"
+    : selectedAdminOrder.status === "revision_in_progress"
+    ? "revision_ready_for_delivery"
+    : "ready_for_delivery";
+
+await updateAdminOrder(selectedAdminOrder.dbId ?? selectedAdminOrder.id, {
   revisionDeliverySets: nextSets,
   revisionEmailSentAt: "",
-  status:
-    selectedAdminOrder.status === "paid_revision_in_progress"
-      ? "paid_revision_ready_for_delivery"
-      : "ready_for_delivery",
+  status: nextStatus,
 });
 
     console.log("Saving revisionDeliverySets:", nextSets);
@@ -3345,17 +3348,20 @@ const handleResumeRevisionWork = async (
   </span>
 )}
 
-{dueInfo.overdue && (
-  <span className="ml-2 rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-300">
-    Overdue
-  </span>
-)}
+{dueInfo.overdue &&
+  !["completed", "cancelled", "archived"].includes(order.status) && (
+    <span className="ml-2 rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-300">
+      Overdue
+    </span>
+  )}
 
-{dueInfo.dueSoon && !dueInfo.overdue && (
-  <span className="ml-2 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-300">
-    Due soon
-  </span>
-)}
+{dueInfo.dueSoon &&
+  !dueInfo.overdue &&
+  !["completed", "cancelled", "archived"].includes(order.status) && (
+    <span className="ml-2 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-300">
+      Due soon
+    </span>
+  )}
 
   {order.status === "revision_requested" && (
   <span className="ml-2 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-300">
@@ -3369,12 +3375,6 @@ const handleResumeRevisionWork = async (
   </span>
 )}
 </p>
-
-{dueInfo.overdue && (
-  <span className="ml-2 rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-300">
-    Overdue
-  </span>
-)}
 
                 <span className={`rounded-full px-2 py-1 text-[10px] ${theme.pill}`}>
                   {order.packageName}
