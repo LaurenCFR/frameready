@@ -3257,13 +3257,13 @@ const handleResumeRevisionWork = async (
         <div className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <div className={`rounded-2xl p-4 ${theme.panel}`}>
             
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-  <div>
+            <div className="mb-6">
+  <div className="mb-4">
     <p className={`text-xs uppercase tracking-[0.18em] ${theme.accentLine}`}>
       Orders
     </p>
 
-    <h2 className="text-lg font-semibold">
+    <h2 className="mt-1 text-xl font-semibold">
       Track and manage client deliveries
     </h2>
 
@@ -3292,9 +3292,8 @@ const handleResumeRevisionWork = async (
         {filter.label}
       </button>
     ))}
-  </div>              
-
-            </div>
+  </div>
+</div>
 
             <div className="space-y-3">
   {adminOrdersLoading && adminOrders.length === 0 && (
