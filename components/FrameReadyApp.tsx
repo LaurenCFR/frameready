@@ -478,6 +478,15 @@ const getTurnaroundHours = (order: AdminOrder) => {
 };
 
 const getDueInfo = (order: AdminOrder) => {
+  if (
+  ["completed", "cancelled", "archived"].includes(order.status)
+) {
+  return {
+    label: "Delivered",
+    overdue: false,
+    dueSoon: false,
+  };
+}
   if (!order.submittedAt) {
     return {
       label: "Due date unknown",
@@ -4035,30 +4044,48 @@ const handleResumeRevisionWork = async (
   Revision Delivery Files
 </h3>
 
-  {[
-  { type: "free_1", label: "Free Revision #1" },
-  { type: "free_2", label: "Free Revision #2" },
+  {(() => {
+  const paidRevisionSets =
+    selectedAdminOrder.revisionDeliverySets?.filter((set) =>
+      set.type?.startsWith("paid")
+    ) ?? [];
 
-  ...(
-    selectedAdminOrder.revisionDeliverySets?.some((set) =>
-      set.type?.startsWith("paid_")
-    )
-      ? selectedAdminOrder.revisionDeliverySets
-          .filter((set) => set.type?.startsWith("paid_"))
-          .map((set) => ({
-            type: set.type,
-            label: set.label || "Paid Revision",
-          }))
-      : [{ type: "paid_1", label: "Paid Revision #1" }]
-  ),
-].map((set) => {
+  const hasOpenPaidRevisionSet = paidRevisionSets.some(
+    (set) => !set.emailSentAt
+  );
+
+  const shouldShowNewPaidRevisionSlot =
+    [
+      "paid_revision_paid",
+      "paid_revision_in_progress",
+      "paid_revision_ready_for_delivery",
+    ].includes(selectedAdminOrder.status) && !hasOpenPaidRevisionSet;
+
+  const revisionDeliverySetOptions = [
+    { type: "free_1", label: "Free Revision #1" },
+    { type: "free_2", label: "Free Revision #2" },
+    ...paidRevisionSets.map((set) => ({
+      type: set.type,
+      label: set.label || "Paid Revision",
+    })),
+    ...(shouldShowNewPaidRevisionSlot
+      ? [
+          {
+            type: `paid_${paidRevisionSets.length + 1}`,
+            label: `Paid Revision #${paidRevisionSets.length + 1}`,
+          },
+        ]
+      : []),
+  ];
+
+  return revisionDeliverySetOptions.map((set) => {
   const revisionSet = (selectedAdminOrder.revisionDeliverySets || []).find(
     (item) => item.type === set.type
   );
 
   const files = revisionSet?.files || [];
 
-const isPaidRevision = set.type === "paid";
+const isPaidRevision = set.type.startsWith("paid");
 
 const revisionSetLocked =
   !isPaidRevision && Boolean(revisionSet?.emailSentAt);
@@ -4208,7 +4235,7 @@ const revisionSetLocked =
   type="button"
   disabled={
     !fileIdentifier ||
-    (set.type !== "paid" && Boolean(revisionSet?.emailSentAt))
+    Boolean(revisionSet?.emailSentAt)
   }
   onClick={() =>
     fileIdentifier &&
@@ -4259,7 +4286,8 @@ const revisionSetLocked =
       )}
     </div>
   );
-})}
+    });
+})()}
 
   {revisionDeliveryUploadMessage && (
     <div className="mt-4 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
