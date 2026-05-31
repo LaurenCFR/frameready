@@ -479,10 +479,22 @@ const getTurnaroundHours = (order: AdminOrder) => {
 
 const getDueInfo = (order: AdminOrder) => {
   if (
-  ["completed", "cancelled", "archived"].includes(order.status)
+  [
+    "completed",
+    "cancelled",
+    "archived",
+    "revision_requested",
+    "revision_in_progress",
+    "revision_ready_for_delivery",
+    "paid_revision_quote_requested",
+    "awaiting_priority_revision_payment",
+    "paid_revision_paid",
+    "paid_revision_in_progress",
+    "paid_revision_ready_for_delivery",
+  ].includes(order.status)
 ) {
   return {
-    label: "Delivered",
+    label: order.status === "completed" ? "Delivered" : "Revision active",
     overdue: false,
     dueSoon: false,
   };
@@ -3425,8 +3437,10 @@ const handleResumeRevisionWork = async (
 </span>
 
             <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
-              {order.turnaround}
-            </span>
+  {order.status === "completed"
+    ? "Delivered"
+    : order.turnaround}
+</span>
 
             {order.languages.length > 0 && (
               <span className={`rounded-full px-3 py-1 text-xs ${theme.pill}`}>
@@ -3615,7 +3629,11 @@ const handleResumeRevisionWork = async (
   </div>
 </div>
                 
-                <div className="mb-4 grid gap-3 sm:grid-cols-2"><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total</p><p className="mt-1 text-lg font-semibold">${selectedAdminOrder.total}</p></div><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Turnaround</p><p className="mt-1 text-lg font-semibold">{selectedAdminOrder.turnaround}</p></div></div>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2"><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Total</p><p className="mt-1 text-lg font-semibold">${selectedAdminOrder.total}</p></div><div className={`rounded-xl p-3 ${theme.panel}`}><p className={`text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>Turnaround</p><p className="mt-1 text-lg font-semibold">
+  {selectedAdminOrder.status === "completed"
+    ? "Delivered"
+    : selectedAdminOrder.turnaround}
+</p></div></div>
                 <div className="mb-4">
                   <label className={`mb-2 block text-xs uppercase tracking-[0.18em] ${theme.mutedText}`}>
                     Status
