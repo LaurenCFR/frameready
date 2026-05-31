@@ -3470,12 +3470,16 @@ const handleResumeRevisionWork = async (
 
   return (
     <p
-      className={`text-xs ${
-        dueInfo.overdue ? "text-red-300" : theme.mutedText
-      }`}
-    >
-      {dueInfo.label}
-    </p>
+  className={`text-xs ${
+    selectedAdminOrder.status === "completed"
+      ? "text-emerald-300"
+      : dueInfo.overdue
+      ? "text-red-300"
+      : theme.mutedText
+  }`}
+>
+  {selectedAdminOrder.status === "completed" ? "Delivered" : dueInfo.label}
+</p>
   );
 })()}
 
