@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -1798,12 +1799,24 @@ const caseStudies: CaseStudy[] = [
       <p>✔ Delivery-ready assets for Filmhub, Amazon, Netflix & more</p>
     </div>
 
-    <button
-      onClick={() => navigateTo("dashboard")}
-      className={`rounded-xl px-8 py-3 ${theme.buttonPrimary}`}
-    >
-      Get Started
-    </button>
+    <div className="flex flex-col items-center justify-center gap-3">
+      <button
+        onClick={() => navigateTo("dashboard")}
+        className={`rounded-xl px-8 py-3 ${theme.buttonPrimary}`}
+      >
+        Get Started
+      </button>
+
+      <div className="flex flex-col items-center gap-2">
+        <p className={`text-xs leading-5 ${theme.mutedText}`}>
+          Not sure if your artwork is ready?
+        </p>
+
+        <Link href="/checker" className={theme.buttonSecondary}>
+          Try the Free Artwork Checker
+        </Link>
+      </div>
+    </div>
   </section>
 
   <div className="mx-auto h-px max-w-6xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
