@@ -45,7 +45,8 @@ export type CheckerAssetId =
   | "textless-16x9"
   | "artwork-4x3"
   | "square-1x1"
-  | "banner-2x1";
+  | "banner-2x1"
+  | "banner-16x6";
 
 export type CheckerPlatform = {
   id: CheckerPlatformId;
@@ -60,8 +61,14 @@ export type CheckerRecommendedAsset = {
   message: string;
 };
 
+export type CheckerPackageAsset = {
+  id: CheckerAssetId;
+  label: string;
+  status: "present" | "missing";
+  matchedFileNames: string[];
+};
+
 export const CHECKER_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-export const CHECKER_MIN_DIMENSION_PX = 1400;
 const RATIO_TOLERANCE = 0.04;
 
 export const CHECKER_ALLOWED_EXTENSIONS = [
@@ -88,41 +95,64 @@ const ASSET_TARGETS: Array<{
   id: CheckerAssetId;
   label: string;
   ratio: number;
+  minWidth: number;
+  minHeight: number;
 }> = [
   {
     id: "poster-2x3",
     label: "2:3 poster",
     ratio: 2 / 3,
+    minWidth: 1400,
+    minHeight: 2100,
   },
   {
     id: "poster-3x4",
     label: "3:4 poster",
     ratio: 3 / 4,
+    minWidth: 1575,
+    minHeight: 2100,
   },
   {
     id: "key-art-16x9",
     label: "16:9 key art",
     ratio: 16 / 9,
+    minWidth: 1920,
+    minHeight: 1080,
   },
   {
     id: "textless-16x9",
     label: "16:9 textless",
     ratio: 16 / 9,
+    minWidth: 1920,
+    minHeight: 1080,
   },
   {
     id: "artwork-4x3",
     label: "4:3 artwork",
     ratio: 4 / 3,
+    minWidth: 1024,
+    minHeight: 768,
   },
   {
     id: "banner-2x1",
     label: "2:1 banner",
     ratio: 2,
+    minWidth: 1920,
+    minHeight: 960,
+  },
+  {
+    id: "banner-16x6",
+    label: "16:6 banner",
+    ratio: 16 / 6,
+    minWidth: 1920,
+    minHeight: 720,
   },
   {
     id: "square-1x1",
     label: "1:1 square",
     ratio: 1,
+    minWidth: 1400,
+    minHeight: 1400,
   },
 ] as const;
 
@@ -168,7 +198,9 @@ function formatRatio(value: number): string {
   return `${rounded}:1`;
 }
 
-function getClosestRatioLabel(dimensions: CheckerDimensions): string | null {
+function getClosestRatioTarget(
+  dimensions: CheckerDimensions
+): (typeof ASSET_TARGETS)[number] | null {
   const actualRatio = dimensions.width / dimensions.height;
   const sortedTargets = [...ASSET_TARGETS].sort(
     (a, b) => Math.abs(actualRatio - a.ratio) - Math.abs(actualRatio - b.ratio)
@@ -177,7 +209,7 @@ function getClosestRatioLabel(dimensions: CheckerDimensions): string | null {
   const closest = sortedTargets[0];
   const distance = Math.abs(actualRatio - closest.ratio);
 
-  return distance <= RATIO_TOLERANCE ? closest.label : null;
+  return distance <= RATIO_TOLERANCE ? closest : null;
 }
 
 export function getCheckerOrientation(
@@ -254,6 +286,39 @@ export function getRecommendedAssets(
     });
 }
 
+export function getPackageCompleteness(
+  summaries: CheckerSummary[]
+): CheckerPackageAsset[] {
+  const readableSummaries = summaries.filter((summary) => summary.dimensions);
+  const usedFileNames = new Set<string>();
+
+  return ASSET_TARGETS.map((asset) => {
+    const matches = readableSummaries.filter((summary) => {
+      if (!summary.dimensions) return false;
+      const ratio = summary.dimensions.width / summary.dimensions.height;
+      return Math.abs(ratio - asset.ratio) <= RATIO_TOLERANCE;
+    });
+
+    const availableMatches =
+      asset.id === "textless-16x9"
+        ? matches.filter((summary) => !usedFileNames.has(summary.fileName))
+        : matches;
+
+    const match = availableMatches[0];
+
+    if (match) {
+      usedFileNames.add(match.fileName);
+    }
+
+    return {
+      id: asset.id,
+      label: asset.label,
+      status: match ? "present" : "missing",
+      matchedFileNames: match ? [match.fileName] : [],
+    };
+  });
+}
+
 export function checkArtworkFile(input: CheckerFileInput): CheckerSummary {
   const results: CheckerResult[] = [];
   const extension = getArtworkFileExtension(input.name);
@@ -326,9 +391,15 @@ export function checkArtworkFile(input: CheckerFileInput): CheckerSummary {
     });
   } else {
     const orientation = getCheckerOrientation(dimensions);
-    const isLargeEnough =
-      dimensions.width >= CHECKER_MIN_DIMENSION_PX &&
-      dimensions.height >= CHECKER_MIN_DIMENSION_PX;
+    const closestRatio = getClosestRatioTarget(dimensions);
+    const closestRatioLabel =
+      closestRatio?.ratio === 16 / 9
+        ? "16:9 key art / textless"
+        : closestRatio?.label;
+    const clearsAssetMinimum = closestRatio
+      ? dimensions.width >= closestRatio.minWidth &&
+        dimensions.height >= closestRatio.minHeight
+      : false;
 
     results.push({
       id: "orientation",
@@ -342,19 +413,20 @@ export function checkArtworkFile(input: CheckerFileInput): CheckerSummary {
     results.push({
       id: "minimum-resolution",
       label: "Minimum resolution",
-      severity: isLargeEnough ? "pass" : "fail",
-      message: isLargeEnough
-        ? `${dimensions.width} x ${dimensions.height}px clears the minimum ${CHECKER_MIN_DIMENSION_PX}px baseline.`
-        : `${dimensions.width} x ${dimensions.height}px is below the ${CHECKER_MIN_DIMENSION_PX}px minimum baseline.`,
+      severity: closestRatio && clearsAssetMinimum ? "pass" : "warning",
+      message: closestRatio
+        ? clearsAssetMinimum
+          ? `${dimensions.width} x ${dimensions.height}px clears the ${closestRatio.label} baseline checker minimum of ${closestRatio.minWidth} x ${closestRatio.minHeight}px.`
+          : `${dimensions.width} x ${dimensions.height}px is below the ${closestRatio.label} baseline checker minimum of ${closestRatio.minWidth} x ${closestRatio.minHeight}px.`
+        : `${dimensions.width} x ${dimensions.height}px does not match a known checker ratio, so resolution needs platform-specific review.`,
     });
 
-    const closestRatio = getClosestRatioLabel(dimensions);
     results.push({
       id: "aspect-ratio",
       label: "Aspect ratio",
       severity: closestRatio ? "pass" : "warning",
       message: closestRatio
-        ? `This looks close to a common ${closestRatio} deliverable.`
+        ? `This looks close to a common ${closestRatioLabel} deliverable.`
         : `Ratio ${formatRatio(dimensions.width / dimensions.height)} may need platform-specific formatting.`,
     });
 

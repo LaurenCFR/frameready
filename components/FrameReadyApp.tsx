@@ -3264,6 +3264,10 @@ const handleResumeRevisionWork = async (
             Refresh Orders
           </button>
 
+          <Link href="/admin/checker-leads" className={theme.buttonSecondary}>
+            View Checker Leads
+          </Link>
+
           <button
             onClick={() => navigateTo("dashboard")}
             className="text-sm underline text-slate-300 hover:text-white"
