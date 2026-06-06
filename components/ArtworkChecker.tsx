@@ -51,6 +51,15 @@ type SmartQcReport = {
   results: CheckerResult[];
 };
 
+type TopIssue = {
+  key: string;
+  label: string;
+  message: string;
+  severity: Extract<CheckerSeverity, "warning" | "fail">;
+  count: number;
+  fileNames: string[];
+};
+
 const severityStyles: Record<
   CheckerSeverity,
   {
@@ -480,6 +489,171 @@ function ResultRow({ result }: { result: CheckerResult }) {
   );
 }
 
+function getResultCounts(results: CheckerResult[]) {
+  return results.reduce(
+    (counts, result) => {
+      if (result.severity === "fail") counts.fail += 1;
+      if (result.severity === "warning") counts.warning += 1;
+      return counts;
+    },
+    { fail: 0, warning: 0 }
+  );
+}
+
+function getDetectedAssetLabel(
+  summary: CheckerSummary,
+  packageSummary: CheckerPackageAsset[]
+): string {
+  const matchedAssets = packageSummary
+    .filter((asset) => asset.matchedFileNames.includes(summary.fileName))
+    .map((asset) => asset.label);
+
+  return matchedAssets.length > 0 ? matchedAssets.join(" / ") : "Manual QC";
+}
+
+function getFileStatusLabel(results: CheckerResult[]) {
+  const outcome = getCheckerOutcome(results);
+  const style = severityStyles[outcome.severity];
+
+  return {
+    label: style.label,
+    className: style.badge,
+  };
+}
+
+function getTopIssues(summaries: CheckerSummary[]): TopIssue[] {
+  const groupedIssues = new Map<string, TopIssue>();
+
+  for (const summary of summaries) {
+    for (const result of summary.results) {
+      if (result.severity !== "fail" && result.severity !== "warning") continue;
+
+      const key = `${result.severity}:${result.label}:${result.message}`;
+      const existing = groupedIssues.get(key);
+
+      if (existing) {
+        existing.count += 1;
+        existing.fileNames.push(summary.fileName);
+      } else {
+        groupedIssues.set(key, {
+          key,
+          label: result.label,
+          message: result.message,
+          severity: result.severity,
+          count: 1,
+          fileNames: [summary.fileName],
+        });
+      }
+    }
+  }
+
+  return Array.from(groupedIssues.values())
+    .sort((a, b) => {
+      const severityRank = (issue: TopIssue) => (issue.severity === "fail" ? 0 : 1);
+      return severityRank(a) - severityRank(b) || b.count - a.count;
+    })
+    .slice(0, 5);
+}
+
+function CompactPackageSummaryCard({
+  assets,
+  fileCount,
+  warningCount,
+  issueCount,
+}: {
+  assets: CheckerPackageAsset[];
+  fileCount: number;
+  warningCount: number;
+  issueCount: number;
+}) {
+  const presentCount = assets.filter((asset) => asset.status === "present").length;
+  const missingCount = assets.filter((asset) => asset.status === "missing").length;
+
+  const stats = [
+    { label: "Present assets", value: presentCount },
+    { label: "Missing assets", value: missingCount },
+    { label: "Files uploaded", value: fileCount },
+    { label: "Warnings/issues", value: warningCount + issueCount },
+  ];
+
+  return (
+    <div className="rounded-3xl border border-cyan-300/20 bg-cyan-400/[0.06] p-5 shadow-[0_24px_70px_rgba(34,211,238,0.1)]">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
+            Results summary
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">
+            Package Summary
+          </h2>
+        </div>
+        <span className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+          {fileCount} file{fileCount === 1 ? "" : "s"} checked
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        {stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-2xl border border-white/10 bg-black/20 p-4"
+          >
+            <p className="text-2xl font-semibold text-white">{stat.value}</p>
+            <p className="mt-1 max-w-[7rem] text-[11px] leading-tight text-slate-400 sm:text-xs">
+              {stat.label}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TopIssues({ issues }: { issues: TopIssue[] }) {
+  if (issues.length === 0) {
+    return (
+      <div className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-5 text-sm text-emerald-100">
+        No warning or fix items were found in this automated check.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+      <p className="text-sm font-semibold text-white">Top Issues</p>
+      <div className="mt-4 space-y-3">
+        {issues.map((issue) => {
+          const style = severityStyles[issue.severity];
+          const fileLabel =
+            issue.count === 1
+              ? `on ${issue.fileNames[0]}`
+              : `on ${issue.count} files`;
+
+          return (
+            <div key={issue.key} className={`rounded-2xl border p-4 ${style.panel}`}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {issue.label} {fileLabel}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    {issue.message}
+                  </p>
+                </div>
+                <span
+                  className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${style.badge}`}
+                >
+                  {style.label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PackageSummary({ assets }: { assets: CheckerPackageAsset[] }) {
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
@@ -621,6 +795,8 @@ function SmartQcPanel({ report }: { report: SmartQcReport | null | undefined }) 
 export default function ArtworkChecker() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [summaries, setSummaries] = useState<CheckerSummary[]>([]);
+  const [isPackageSummaryExpanded, setIsPackageSummaryExpanded] = useState(false);
+  const [expandedFileIds, setExpandedFileIds] = useState<Set<string>>(new Set());
   const [previewUrls, setPreviewUrls] = useState<
     Array<{ fileName: string; url: string }>
   >([]);
@@ -652,6 +828,20 @@ export default function ArtworkChecker() {
     () => getPackageCompleteness(summaries),
     [summaries]
   );
+  const reportIssueStats = useMemo(
+    () =>
+      summaries.reduce(
+        (stats, summary) => {
+          const counts = getResultCounts(summary.results);
+          stats.warningCount += counts.warning;
+          stats.issueCount += counts.fail;
+          return stats;
+        },
+        { warningCount: 0, issueCount: 0 }
+      ),
+    [summaries]
+  );
+  const topIssues = useMemo(() => getTopIssues(summaries), [summaries]);
   const primarySummary = summaries[0] ?? null;
 
   useEffect(() => {
@@ -666,6 +856,18 @@ export default function ArtworkChecker() {
         ? current.filter((id) => id !== platformId)
         : [...current, platformId]
     );
+  };
+
+  const toggleFileExpanded = (fileId: string) => {
+    setExpandedFileIds((current) => {
+      const next = new Set(current);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
   };
 
   const handleFiles = async (fileList: FileList | File[]) => {
@@ -721,6 +923,8 @@ export default function ArtworkChecker() {
 
       setSummaries(checkedFiles.map((item) => item.summary));
       setSmartQcReports(checkedFiles.map((item) => item.smartQcReport));
+      setIsPackageSummaryExpanded(false);
+      setExpandedFileIds(new Set());
 
       if (fileArray.length > MAX_UPLOAD_FILES) {
         setError(
@@ -1054,13 +1258,58 @@ export default function ArtworkChecker() {
             </div>
           ) : (
             <div>
-              <PackageSummary assets={packageSummary} />
+              <CompactPackageSummaryCard
+                assets={packageSummary}
+                fileCount={summaries.length}
+                warningCount={reportIssueStats.warningCount}
+                issueCount={reportIssueStats.issueCount}
+              />
 
-              <div className="mt-6 space-y-6">
+              <div className="mt-4">
+                <TopIssues issues={topIssues} />
+              </div>
+
+              <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      Package Summary details
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">
+                      Expand to see which package assets are present or missing.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIsPackageSummaryExpanded((current) => !current)
+                    }
+                    className="w-fit rounded-full border border-cyan-300/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
+                  >
+                    {isPackageSummaryExpanded ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+
+                {isPackageSummaryExpanded ? (
+                  <div className="mt-4">
+                    <PackageSummary assets={packageSummary} />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 space-y-3">
                 {summaries.map((summary, index) => {
                   const outcome = getCheckerOutcome(summary.results);
                   const outcomeStyle = severityStyles[outcome.severity];
                   const orientation = getCheckerOrientation(summary.dimensions);
+                  const fileId = `${summary.fileName}-${index}`;
+                  const isExpanded = expandedFileIds.has(fileId);
+                  const resultCounts = getResultCounts(summary.results);
+                  const detectedAssetLabel = getDetectedAssetLabel(
+                    summary,
+                    packageSummary
+                  );
+                  const fileStatus = getFileStatusLabel(summary.results);
                   const recommendedAssets = getRecommendedAssets(
                     selectedPlatforms,
                     summary.dimensions
@@ -1072,66 +1321,108 @@ export default function ArtworkChecker() {
 
                   return (
                     <section
-                      key={`${summary.fileName}-${index}`}
+                      key={fileId}
                       className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl"
                     >
-                      <div className={`rounded-2xl border p-5 ${outcomeStyle.panel}`}>
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-300">
-                              File {index + 1} checker result
+                              File {index + 1}
                             </p>
-                            <h2 className="mt-2 text-2xl font-semibold text-white">
-                              {outcome.title}
-                            </h2>
-                            <p className="mt-2 text-sm leading-6 text-slate-300">
-                              {outcome.message}
-                            </p>
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${fileStatus.className}`}
+                            >
+                              {fileStatus.label}
+                            </span>
                           </div>
-                          <span
-                            className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${outcomeStyle.badge}`}
-                          >
-                            {outcomeStyle.label}
+                          <h2 className="mt-2 break-all text-lg font-semibold text-white">
+                            {summary.fileName}
+                          </h2>
+                          <p className="mt-2 text-sm leading-6 text-slate-400">
+                            {summary.dimensions
+                              ? `${summary.dimensions.width} x ${summary.dimensions.height}px`
+                              : "Dimensions need manual QC"}{" "}
+                            - {detectedAssetLabel}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-300">
+                            {resultCounts.fail + resultCounts.warning} warning/issue
+                            {resultCounts.fail + resultCounts.warning === 1
+                              ? ""
+                              : "s"}
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleFileExpanded(fileId)}
+                            className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
+                          >
+                            {isExpanded ? "Collapse" : "Expand"}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            File
-                          </p>
-                          <p className="mt-2 break-all text-sm font-semibold text-white">
-                            {summary.fileName}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Size
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-white">
-                            {formatCheckerFileSize(summary.fileSizeBytes)}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Dimensions
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-white">
-                            {summary.dimensions
-                              ? `${summary.dimensions.width} x ${summary.dimensions.height}px`
-                              : "Manual QC"}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:col-span-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Orientation
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-white">
-                            {orientation || "Manual QC"}
-                          </p>
-                        </div>
-                      </div>
+                      {isExpanded ? (
+                        <>
+                          <div className={`mt-5 rounded-2xl border p-5 ${outcomeStyle.panel}`}>
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-300">
+                                  Full checker result
+                                </p>
+                                <h2 className="mt-2 text-2xl font-semibold text-white">
+                                  {outcome.title}
+                                </h2>
+                                <p className="mt-2 text-sm leading-6 text-slate-300">
+                                  {outcome.message}
+                                </p>
+                              </div>
+                              <span
+                                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${outcomeStyle.badge}`}
+                              >
+                                {outcomeStyle.label}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                File
+                              </p>
+                              <p className="mt-2 break-all text-sm font-semibold text-white">
+                                {summary.fileName}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                Size
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-white">
+                                {formatCheckerFileSize(summary.fileSizeBytes)}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                Dimensions
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-white">
+                                {summary.dimensions
+                                  ? `${summary.dimensions.width} x ${summary.dimensions.height}px`
+                                  : "Manual QC"}
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:col-span-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                Orientation
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-white">
+                                {orientation || "Manual QC"}
+                              </p>
+                            </div>
+                          </div>
 
                       <SmartQcPanel report={smartQcReport} />
 
@@ -1243,15 +1534,35 @@ export default function ArtworkChecker() {
                           </div>
                         )}
                       </div>
+                        </>
+                      ) : null}
                     </section>
                   );
                 })}
               </div>
 
               <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                <p className="text-sm font-semibold text-white">Save checker report</p>
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Save this report without uploading the artwork file. Email is required.
+                <h2 className="text-xl font-semibold">Need help fixing these issues?</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  FrameReady can format and QC your artwork for Filmhub, Amazon,
+                  Apple TV, Roku, Tubi, YouTube, FAST channels, and more.
+                </p>
+                <Link
+                  href="/"
+                  className="mt-4 inline-flex rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.28)] transition hover:shadow-[0_22px_55px_rgba(99,102,241,0.28)]"
+                >
+                  Get FrameReady to fix this
+                </Link>
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(255,255,255,0.04))] p-5 shadow-[0_24px_70px_rgba(8,145,178,0.16)] backdrop-blur-xl">
+                <h2 className="text-xl font-semibold text-white">
+                  Request a FREE review or Save your report.
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Save this checker report without uploading artwork, or ask
+                  FrameReady to take a quick professional look before you place
+                  an order. Email is required.
                 </p>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1295,14 +1606,24 @@ export default function ArtworkChecker() {
                   </label>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveReport}
-                  disabled={isSavingReport}
-                  className="mt-4 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.28)] transition hover:shadow-[0_22px_55px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                >
-                  {isSavingReport ? "Saving report..." : "Save checker report"}
-                </button>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleStartReviewRequest}
+                    disabled={isRequestingReview}
+                    className="inline-flex justify-center rounded-xl bg-gradient-to-r from-amber-300 via-yellow-400 to-orange-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(251,191,36,0.26)] transition hover:shadow-[0_22px_55px_rgba(245,158,11,0.28)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                  >
+                    {isRequestingReview ? "Preparing review..." : "Get a Free Review"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveReport}
+                    disabled={isSavingReport}
+                    className="inline-flex justify-center rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.28)] transition hover:shadow-[0_22px_55px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                  >
+                    {isSavingReport ? "Saving report..." : "Save checker report"}
+                  </button>
+                </div>
 
                 {saveMessage ? (
                   <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
@@ -1315,27 +1636,6 @@ export default function ArtworkChecker() {
                     {saveError}
                   </div>
                 ) : null}
-              </div>
-
-              <div className="mt-6 rounded-3xl border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(255,255,255,0.04))] p-5 shadow-[0_24px_70px_rgba(8,145,178,0.16)] backdrop-blur-xl">
-                <h2 className="text-xl font-semibold text-white">
-                  The checker found a few items that may need review.
-                </h2>
-                <p className="mt-2 text-sm font-semibold text-cyan-100">
-                  Get a free professional artwork review from FrameReady.
-                </p>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  We&apos;ll take a quick look at your artwork and identify any
-                  potential platform issues before you place an order.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleStartReviewRequest}
-                  disabled={isRequestingReview}
-                  className="mt-4 inline-flex rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.28)] transition hover:shadow-[0_22px_55px_rgba(99,102,241,0.28)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-                >
-                  {isRequestingReview ? "Preparing review..." : "Get a Free Review"}
-                </button>
 
                 {isReviewUploadOpen ? (
                   <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -1395,19 +1695,6 @@ export default function ArtworkChecker() {
                 ) : null}
               </div>
 
-              <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                <h2 className="text-xl font-semibold">Need help fixing these issues?</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-                  FrameReady can format and QC your artwork for Filmhub, Amazon,
-                  Apple TV, Roku, Tubi, YouTube, FAST channels, and more.
-                </p>
-                <Link
-                  href="/"
-                  className="mt-4 inline-flex rounded-xl bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(56,189,248,0.28)] transition hover:shadow-[0_22px_55px_rgba(99,102,241,0.28)]"
-                >
-                  Get FrameReady to fix this
-                </Link>
-              </div>
             </div>
           )}
         </div>

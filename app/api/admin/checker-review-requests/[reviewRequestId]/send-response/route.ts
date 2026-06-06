@@ -22,12 +22,14 @@ type ReviewRequestRow = {
         name?: string | null;
         email?: string | null;
         project_title?: string | null;
+        lead_status?: string | null;
       }
     | Array<{
         id?: string | null;
         name?: string | null;
         email?: string | null;
         project_title?: string | null;
+        lead_status?: string | null;
       }>
     | null;
 };
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { data: reviewRequest, error: fetchError } = await supabase
       .from("checker_review_requests")
       .select(
-        "id,checker_submission_id,status,checker_submissions(id,name,email,project_title)"
+        "id,checker_submission_id,status,checker_submissions(id,name,email,project_title,lead_status)"
       )
       .eq("id", reviewRequestId)
       .maybeSingle();
@@ -178,6 +180,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { error: "Email sent, but review response status could not be saved." },
         { status: 500 }
       );
+    }
+
+    if (submission?.id && submission.lead_status === "new") {
+      const { error: leadStatusError } = await supabase
+        .from("checker_submissions")
+        .update({
+          lead_status: "contacted",
+          lead_status_updated_at: sentAt,
+        })
+        .eq("id", submission.id);
+
+      if (leadStatusError) {
+        console.error(
+          "checker review response lead status update failed",
+          leadStatusError
+        );
+      }
     }
 
     return NextResponse.json(

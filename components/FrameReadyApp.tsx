@@ -1806,20 +1806,36 @@ const caseStudies: CaseStudy[] = [
       >
         Get Started
       </button>
-
-      <div className="flex flex-col items-center gap-2">
-        <p className={`text-xs leading-5 ${theme.mutedText}`}>
-          Not sure if your artwork is ready?
-        </p>
-
-        <Link href="/checker" className={theme.buttonSecondary}>
-          Try the Free Artwork Checker
-        </Link>
-      </div>
     </div>
   </section>
 
   <div className="mx-auto h-px max-w-6xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+  {/* Free Artwork Checker */}
+  <section className="mx-auto max-w-6xl px-6 py-10">
+    <div className={`flex flex-col items-center gap-8 rounded-[2rem] p-6 md:flex-row md:justify-center md:gap-12 md:p-8 lg:gap-16 ${theme.panelStrong}`}>
+      <div className="mx-auto max-w-2xl text-center md:mx-0 md:max-w-xl">
+        <p className={`text-xs uppercase tracking-[0.22em] ${theme.accentLine}`}>
+          Free Artwork Checker
+        </p>
+
+        <h2 className="mt-3 text-2xl font-bold text-white md:text-3xl">
+          Upload your artwork and instantly identify potential issues before submission.
+        </h2>
+
+        <Link href="/checker" className={`${theme.buttonSecondary} mt-6 justify-center px-5 py-3`}>
+          Try the Free Artwork Checker
+        </Link>
+      </div>
+
+      <div className={`mx-auto grid max-w-sm gap-3 text-sm md:mx-0 ${theme.softText}`}>
+        <p>✓ Safe zone checks</p>
+        <p>✓ Thumbnail readability checks</p>
+        <p>✓ Package completeness checks</p>
+        <p>✓ Free professional review available</p>
+      </div>
+    </div>
+  </section>
 
   {/* Case Studies */}
   <section className="mx-auto max-w-6xl px-6 pb-14 pt-6">

@@ -73,10 +73,21 @@ type CheckerLead = {
   lead_status_updated_at?: string | null;
   lead_notes?: string | null;
   review_requested_at?: string | null;
+  archived_at?: string | null;
+  deleted_at?: string | null;
   reviewRequests?: CheckerReviewRequest[];
 };
 
+type CheckerFunnelMetrics = {
+  reportsSaved: number;
+  freeReviewsRequested: number;
+  reviewsSent: number;
+  convertedLeads: number;
+  conversionRate: number;
+};
+
 type LeadStatus = "new" | "contacted" | "interested" | "converted" | "closed";
+type CheckerLeadView = "active" | "archived";
 type ReviewStatus =
   | "pending_review"
   | "review_in_progress"
@@ -93,6 +104,14 @@ const leadStatusOptions: Array<{ value: LeadStatus; label: string }> = [
 ];
 
 const REVIEW_RESPONSE_SUBJECT = "Your FrameReady Artwork Review";
+
+const emptyFunnelMetrics: CheckerFunnelMetrics = {
+  reportsSaved: 0,
+  freeReviewsRequested: 0,
+  reviewsSent: 0,
+  convertedLeads: 0,
+  conversionRate: 0,
+};
 
 const theme = {
   page:
@@ -249,13 +268,18 @@ function getLeadStatusClass(status?: string | null) {
   }
 }
 
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "0%";
+  return `${value.toFixed(1)}%`;
+}
+
 function getReviewStatusLabel(status?: string | null) {
   switch (status) {
     case "review_in_progress":
-      return "Review in progress";
+      return "Review In Progress";
     case "response_sent":
     case "responded":
-      return "Response sent";
+      return "Review Sent";
     case "converted":
       return "Converted";
     case "closed":
@@ -264,8 +288,14 @@ function getReviewStatusLabel(status?: string | null) {
     case "reviewed":
     case "pending_review":
     default:
-      return "Pending review";
+      return "Admin Review Needed";
   }
+}
+
+function hasReviewResponseSent(request: CheckerReviewRequest) {
+  return Boolean(
+    request.review_response_sent_at || request.status === "response_sent"
+  );
 }
 
 function getReviewStatusClass(status?: string | null) {
@@ -286,39 +316,47 @@ function getReviewStatusClass(status?: string | null) {
 
 function getReviewResponseTemplate(lead: CheckerLead) {
   const name = lead.name?.trim() || "there";
-  const project = lead.project_title?.trim();
-  const siteUrl =
-    typeof window === "undefined" ? "/" : window.location.origin || "/";
 
   return `Hi ${name},
 
-Thanks for sending your artwork for a free FrameReady review.${
-    project ? `\n\nProject: ${project}` : ""
-  }
+Thanks for sending your artwork for review.
 
-I reviewed the uploaded artwork and noticed:
+After reviewing the files, here are my observations:
 
-- [Add review notes here]
+--------------------------------
+REVIEW NOTES
+--------------------------------
 
-Recommended next step:
+[Add your review notes here]
 
-- [Add recommendation here]
+--------------------------------
+RECOMMENDATIONS
+--------------------------------
+
+[Add recommendations here]
 
 If you'd like FrameReady to prepare corrected, platform-ready artwork files, you can start an order here:
 
-${siteUrl}
+https://frameready.com
 
 Best regards,
+
 FrameReady`;
 }
 
 export default function CheckerLeadsPage() {
   const [checkerLeads, setCheckerLeads] = useState<CheckerLead[]>([]);
+  const [funnelMetrics, setFunnelMetrics] =
+    useState<CheckerFunnelMetrics>(emptyFunnelMetrics);
+  const [checkerLeadView, setCheckerLeadView] =
+    useState<CheckerLeadView>("active");
   const [checkerLeadsLoading, setCheckerLeadsLoading] = useState(false);
   const [checkerLeadsError, setCheckerLeadsError] = useState("");
   const [expandedCheckerLeadId, setExpandedCheckerLeadId] = useState<string>("");
   const [sendingFollowupId, setSendingFollowupId] = useState<string>("");
   const [savingLeadStatusId, setSavingLeadStatusId] = useState<string>("");
+  const [updatingLeadVisibilityId, setUpdatingLeadVisibilityId] =
+    useState<string>("");
   const [leadStatusDrafts, setLeadStatusDrafts] = useState<Record<string, LeadStatus>>({});
   const [leadNotesDrafts, setLeadNotesDrafts] = useState<Record<string, string>>({});
   const [updatingReviewStatusId, setUpdatingReviewStatusId] = useState<string>("");
@@ -335,10 +373,13 @@ export default function CheckerLeadsPage() {
       setCheckerLeadsLoading(true);
       setCheckerLeadsError("");
 
-      const response = await fetch("/api/admin/checker-submissions", {
+      const response = await fetch(
+        `/api/admin/checker-submissions?view=${checkerLeadView}`,
+        {
         method: "GET",
         cache: "no-store",
-      });
+        }
+      );
       const json = await response.json();
 
       if (!response.ok) {
@@ -347,6 +388,10 @@ export default function CheckerLeadsPage() {
 
       const submissions = (json.submissions || []) as CheckerLead[];
       setCheckerLeads(submissions);
+      setFunnelMetrics({
+        ...emptyFunnelMetrics,
+        ...(json.metrics || {}),
+      });
       setLeadStatusDrafts(
         Object.fromEntries(
           submissions.map((lead) => [
@@ -376,7 +421,7 @@ export default function CheckerLeadsPage() {
 
   useEffect(() => {
     void loadCheckerLeads();
-  }, []);
+  }, [checkerLeadView]);
 
   const sendFollowupEmail = async (leadId: string) => {
     try {
@@ -442,7 +487,49 @@ export default function CheckerLeadsPage() {
     }
   };
 
-  const markReviewInProgress = async (reviewRequestId: string) => {
+  const updateLeadVisibility = async (
+    leadId: string,
+    action: "archive" | "restore" | "delete"
+  ) => {
+    if (
+      action === "delete" &&
+      !window.confirm(
+        "Delete this checker lead? This hides it from active and archived lists, but does not remove database rows or uploaded review files."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setUpdatingLeadVisibilityId(leadId);
+      setCheckerLeadsError("");
+
+      const response = await fetch(
+        `/api/admin/checker-submissions/${leadId}/${action}`,
+        { method: "PATCH" }
+      );
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json?.error || `Unable to ${action} checker lead.`);
+      }
+
+      await loadCheckerLeads();
+    } catch (error) {
+      setCheckerLeadsError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update checker lead."
+      );
+    } finally {
+      setUpdatingLeadVisibilityId("");
+    }
+  };
+
+  const updateReviewStatus = async (
+    reviewRequestId: string,
+    reviewStatus: "pending_review" | "review_in_progress" | "response_sent"
+  ) => {
     try {
       setUpdatingReviewStatusId(reviewRequestId);
       setCheckerLeadsError("");
@@ -452,7 +539,7 @@ export default function CheckerLeadsPage() {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reviewStatus: "review_in_progress" }),
+          body: JSON.stringify({ reviewStatus }),
         }
       );
       const json = await response.json();
@@ -552,6 +639,60 @@ export default function CheckerLeadsPage() {
         </div>
 
         <section className={`rounded-2xl p-4 ${theme.panelStrong}`}>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                label: "Reports Saved",
+                value: funnelMetrics.reportsSaved,
+              },
+              {
+                label: "Free Reviews Requested",
+                value: funnelMetrics.freeReviewsRequested,
+              },
+              {
+                label: "Reviews Sent",
+                value: funnelMetrics.reviewsSent,
+              },
+              {
+                label: "Converted Leads",
+                value: funnelMetrics.convertedLeads,
+              },
+              {
+                label: "Conversion Rate",
+                value: formatPercent(funnelMetrics.conversionRate),
+              },
+            ].map((metric) => (
+              <div
+                key={metric.label}
+                className="rounded-2xl border border-white/10 bg-black/20 p-4"
+              >
+                <p className="text-2xl font-semibold text-white">
+                  {metric.value}
+                </p>
+                <p className="mt-1 text-xs leading-tight text-slate-400">
+                  {metric.label}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(["active", "archived"] as CheckerLeadView[]).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setCheckerLeadView(view)}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  checkerLeadView === view
+                    ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
+                    : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-cyan-300/25 hover:text-white"
+                }`}
+              >
+                {view === "active" ? "Active" : "Archived"}
+              </button>
+            ))}
+          </div>
+
           {checkerLeadsError && (
             <div className={`mb-4 rounded-xl p-3 text-sm ${theme.errorPanel}`}>
               {checkerLeadsError}
@@ -566,7 +707,9 @@ export default function CheckerLeadsPage() {
 
           {!checkerLeadsLoading && checkerLeads.length === 0 && !checkerLeadsError && (
             <div className={`rounded-xl p-4 text-sm ${theme.panel}`}>
-              No checker leads saved yet.
+              {checkerLeadView === "archived"
+                ? "No archived checker leads."
+                : "No checker leads saved yet."}
             </div>
           )}
 
@@ -582,6 +725,7 @@ export default function CheckerLeadsPage() {
                 const followupStatus = getFollowupStatus(lead);
                 const leadStatusOption = getLeadStatusOption(lead.lead_status);
                 const reviewRequests = lead.reviewRequests || [];
+                const reviewSent = reviewRequests.some(hasReviewResponseSent);
 
                 return (
                   <div key={lead.id} className={`rounded-2xl border p-4 ${theme.card}`}>
@@ -613,6 +757,16 @@ export default function CheckerLeadsPage() {
                               <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-100">
                                 {reviewRequests.length} review request
                                 {reviewRequests.length === 1 ? "" : "s"}
+                              </span>
+                            )}
+                            {reviewSent && (
+                              <span className="rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-100">
+                                Review Sent
+                              </span>
+                            )}
+                            {lead.archived_at && (
+                              <span className="rounded-full border border-slate-300/20 bg-slate-400/10 px-2 py-1 text-[10px] text-slate-200">
+                                Archived
                               </span>
                             )}
                           </div>
@@ -674,14 +828,55 @@ export default function CheckerLeadsPage() {
                               </p>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void sendFollowupEmail(lead.id)}
-                            disabled={!lead.email || sendingFollowupId === lead.id}
-                            className={`${theme.buttonSecondary} disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {sendingFollowupId === lead.id ? "Sending..." : "Email Lead"}
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void sendFollowupEmail(lead.id)}
+                              disabled={!lead.email || sendingFollowupId === lead.id}
+                              className={`${theme.buttonSecondary} disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {sendingFollowupId === lead.id ? "Sending..." : "Email Lead"}
+                            </button>
+                            {checkerLeadView === "archived" ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void updateLeadVisibility(lead.id, "restore")
+                                }
+                                disabled={updatingLeadVisibilityId === lead.id}
+                                className={`${theme.buttonSecondary} disabled:cursor-not-allowed disabled:opacity-50`}
+                              >
+                                {updatingLeadVisibilityId === lead.id
+                                  ? "Updating..."
+                                  : "Restore"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void updateLeadVisibility(lead.id, "archive")
+                                }
+                                disabled={updatingLeadVisibilityId === lead.id}
+                                className={`${theme.buttonSecondary} disabled:cursor-not-allowed disabled:opacity-50`}
+                              >
+                                {updatingLeadVisibilityId === lead.id
+                                  ? "Updating..."
+                                  : "Archive"}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void updateLeadVisibility(lead.id, "delete")
+                              }
+                              disabled={updatingLeadVisibilityId === lead.id}
+                              className="inline-flex items-center gap-2 rounded-full border border-rose-400/25 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 shadow-[0_10px_30px_rgba(0,0,0,0.22)] transition hover:border-rose-300/40 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {updatingLeadVisibilityId === lead.id
+                                ? "Updating..."
+                                : "Delete"}
+                            </button>
+                          </div>
                         </div>
 
                         <div className={`rounded-xl p-4 ${theme.panel}`}>
@@ -751,50 +946,74 @@ export default function CheckerLeadsPage() {
                                   Requested {formatDate(lead.review_requested_at)}
                                 </p>
                               </div>
-                              <span className="w-fit rounded-full border border-cyan-300/25 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
-                                Admin review needed
+                              <span className={`w-fit rounded-full border px-3 py-1 text-xs ${
+                                reviewSent
+                                  ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
+                                  : "border-cyan-300/25 bg-cyan-400/10 text-cyan-100"
+                              }`}>
+                                {reviewSent
+                                  ? "Admin Review Sent"
+                                  : "Admin Review Needed"}
                               </span>
                             </div>
 
                             {reviewRequests.length > 0 ? (
                               <div className="space-y-3">
-                                {reviewRequests.map((request) => (
-                                  <div
-                                    key={request.id}
-                                    className={`rounded-xl border p-3 ${theme.card}`}
-                                  >
+                                {reviewRequests.map((request) => {
+                                  const reviewResponseSent =
+                                    hasReviewResponseSent(request);
+
+                                  return (
+                                    <div
+                                      key={request.id}
+                                      className={`rounded-xl border p-3 ${theme.card}`}
+                                    >
                                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                       <div>
                                         <div className="flex flex-wrap items-center gap-2">
                                           <p className="text-sm font-semibold text-white">
                                             Review request
                                           </p>
-                                          <span className={`w-fit rounded-full border px-3 py-1 text-xs ${getReviewStatusClass(request.status)}`}>
-                                            {getReviewStatusLabel(request.status)}
+                                          <span className={`w-fit rounded-full border px-3 py-1 text-xs ${getReviewStatusClass(reviewResponseSent ? "response_sent" : request.status)}`}>
+                                            {reviewResponseSent
+                                              ? "Review Sent"
+                                              : getReviewStatusLabel(request.status)}
                                           </span>
                                         </div>
                                         <p className={`mt-1 text-xs ${theme.mutedText}`}>
                                           Created {formatDate(request.created_at)}
                                         </p>
-                                        {request.review_response_sent_at && (
-                                          <p className="mt-2 text-xs text-emerald-100">
-                                            Review response sent:{" "}
-                                            {formatDate(request.review_response_sent_at)}
-                                            {request.review_response_subject
-                                              ? ` - ${request.review_response_subject}`
-                                              : ""}
-                                          </p>
+                                        {reviewResponseSent && (
+                                          <div className="mt-2 space-y-1 text-xs text-emerald-100">
+                                            <p>
+                                              Review sent:{" "}
+                                              {request.review_response_sent_at
+                                                ? formatDate(request.review_response_sent_at)
+                                                : "Sent"}
+                                            </p>
+                                            {request.review_response_subject && (
+                                              <p>
+                                                Subject:{" "}
+                                                {request.review_response_subject}
+                                              </p>
+                                            )}
+                                          </div>
                                         )}
                                       </div>
 
-                                      <div className="flex flex-wrap gap-2">
+                                      <div className="flex flex-wrap items-end gap-2">
                                         <button
                                           type="button"
-                                          onClick={() => void markReviewInProgress(request.id)}
+                                          onClick={() =>
+                                            void updateReviewStatus(
+                                              request.id,
+                                              "review_in_progress"
+                                            )
+                                          }
                                           disabled={
                                             updatingReviewStatusId === request.id ||
                                             request.status === "review_in_progress" ||
-                                            request.status === "response_sent"
+                                            reviewResponseSent
                                           }
                                           className={`${theme.buttonSecondary} disabled:cursor-not-allowed disabled:opacity-50`}
                                         >
@@ -809,13 +1028,16 @@ export default function CheckerLeadsPage() {
                                           }
                                           disabled={
                                             !lead.email ||
-                                            sendingReviewResponseId === request.id
+                                            sendingReviewResponseId === request.id ||
+                                            reviewResponseSent
                                           }
                                           className={`${theme.buttonSecondary} border-cyan-300/25 bg-cyan-400/10 text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50`}
                                         >
                                           {sendingReviewResponseId === request.id
                                             ? "Sending..."
-                                            : "Send Review Response"}
+                                            : reviewResponseSent
+                                              ? "Review Response Sent"
+                                              : "Send Review Response"}
                                         </button>
                                       </div>
                                     </div>
@@ -856,7 +1078,8 @@ export default function CheckerLeadsPage() {
                                       </p>
                                     )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className={`rounded-xl border p-3 text-sm ${theme.card} ${theme.mutedText}`}>
