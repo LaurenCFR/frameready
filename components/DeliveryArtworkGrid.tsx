@@ -82,10 +82,10 @@ export default function DeliveryArtworkGrid({ files }: DeliveryArtworkGridProps)
   onClick={() => setPreviewFile(null)}
 >
           <div
-  className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl"
+  className="flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950 shadow-2xl"
   onClick={(e) => e.stopPropagation()}
 >
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
               <p className="truncate text-sm font-medium text-white">
                 {labelFromFile(previewFile)}
               </p>
@@ -99,15 +99,15 @@ export default function DeliveryArtworkGrid({ files }: DeliveryArtworkGridProps)
               </button>
             </div>
 
-            <div className="flex max-h-[75vh] items-center justify-center overflow-auto p-4">
+            <div className="flex min-h-0 flex-1 items-center justify-center p-4">
               <img
                 src={previewFile.signedUrl}
                 alt={labelFromFile(previewFile)}
-                className="max-h-[72vh] max-w-full rounded-xl object-contain"
+                className="max-h-full max-w-full rounded-xl object-contain"
               />
             </div>
 
-            <div className="flex items-center justify-between border-t border-white/10 px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-t border-white/10 px-4 py-3">
               <p className="text-xs text-slate-500">
                 Download links refresh automatically if they expire.
               </p>
