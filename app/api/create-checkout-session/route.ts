@@ -62,6 +62,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (order.order_status !== "awaiting_payment") {
+      return NextResponse.json(
+        { error: "This order is not awaiting payment." },
+        { status: 409 }
+      );
+    }
+
     if (!isPackageId(order.package_id) || !isAddOnIdArray(order.add_on_ids)) {
       return NextResponse.json(
         { error: "Order contains invalid pricing data." },
