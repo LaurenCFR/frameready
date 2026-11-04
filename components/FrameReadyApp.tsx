@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -167,10 +167,7 @@ const MAX_FILE_SIZE_MB = 50;
 const MIN_DIMENSION_PX = 1400;
 const COMMON_LANGUAGES = ["Spanish", "French", "German", "Italian", "Japanese"] as const;
 
-const supabaseBrowser = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseBrowser = createSupabaseBrowserClient();
 
 const initialAdminOrders: AdminOrder[] = [
   {

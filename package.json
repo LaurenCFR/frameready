@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:environment": "node --experimental-strip-types --test tests/environment.test.ts tests/isolation-policies.test.ts tests/payment-state-races.test.ts tests/payment-route-queries.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

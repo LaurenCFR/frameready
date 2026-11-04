@@ -1,5 +1,7 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+Environment separation and launch setup are documented in [docs/environment-setup.md](docs/environment-setup.md). Do not run this application with mixed Preview and Production credentials.
+
 ## Getting Started
 
 First, run the development server:

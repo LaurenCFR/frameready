@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ORDER_STATUSES, type OrderStatus } from "@/types/order";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -198,7 +196,7 @@ if (
   const orderLabel = data.public_order_id || data.id;
 
   try {
-  const emailResult = await resend.emails.send({
+  const emailResult = await sendEmail({
     from: process.env.DELIVERY_FROM_EMAIL,
     to: data.client_email,
     subject: isPriority

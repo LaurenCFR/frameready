@@ -1,21 +1,43 @@
 import Stripe from "stripe";
+import {
+  getFrameReadyEnvironment,
+  getRequiredEnvironmentVariable,
+  getSiteUrl as getEnvironmentSiteUrl,
+} from "@/lib/environment";
+import {
+  assertStripeAccountId,
+  assertStripeKeyMode,
+} from "@/lib/stripe-policy";
 
 let stripeInstance: Stripe | null = null;
-
-function getEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+let stripeAccountVerification: Promise<void> | null = null;
 
 export function getStripe(): Stripe {
   if (stripeInstance) return stripeInstance;
 
-  stripeInstance = new Stripe(getEnv("STRIPE_SECRET_KEY"));
+  const environment = getFrameReadyEnvironment();
+  const secretKey = getRequiredEnvironmentVariable("STRIPE_SECRET_KEY");
+  assertStripeKeyMode(environment, secretKey);
+
+  stripeInstance = new Stripe(secretKey);
 
   return stripeInstance;
+}
+
+export async function verifyStripeAccount(): Promise<void> {
+  if (!stripeAccountVerification) {
+    stripeAccountVerification = (async () => {
+      const stripe = getStripe();
+      const expectedAccountId = getRequiredEnvironmentVariable(
+        "STRIPE_EXPECTED_ACCOUNT_ID"
+      );
+      const account = await stripe.accounts.retrieveCurrent();
+
+      assertStripeAccountId(expectedAccountId, account.id);
+    })();
+  }
+
+  return stripeAccountVerification;
 }
 
 export function getStripeWebhookSecret(): string | null {
@@ -23,5 +45,5 @@ export function getStripeWebhookSecret(): string | null {
 }
 
 export function getSiteUrl(): string {
-  return getEnv("NEXT_PUBLIC_SITE_URL");
+  return getEnvironmentSiteUrl();
 }

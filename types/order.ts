@@ -90,6 +90,8 @@ export type OrderRow = {
   total_cents: number | null;
   payment_status: string | null;
   order_status: OrderStatus;
+  stripe_checkout_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
 
   localized_languages: string[] | null;
   add_on_labels: string[] | null;

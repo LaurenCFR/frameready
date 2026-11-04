@@ -1,24 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
+import { getSiteUrl } from "@/lib/environment";
 
 export const runtime = "nodejs";
 
 const FOLLOWUP_SUBJECT = "Can FrameReady help fix your artwork?";
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 type RouteContext = {
   params: Promise<{ submissionId: string }>;
 };
-
-function getSiteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.SITE_URL ||
-    "http://localhost:3000"
-  ).replace(/\/$/, "");
-}
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -136,7 +128,7 @@ FrameReady`;
       </div>
     `;
 
-    const emailResult = await resend.emails.send({
+    const emailResult = await sendEmail({
       from: fromEmail,
       to: email,
       subject: FOLLOWUP_SUBJECT,

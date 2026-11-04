@@ -2,16 +2,27 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getStripe, getStripeWebhookSecret } from "@/lib/stripe";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import {
+  getStripe,
+  getStripeWebhookSecret,
+  verifyStripeAccount,
+} from "@/lib/stripe";
+import { sendEmail } from "@/lib/email";
+import {
+  markCheckoutExpired,
+  markInitialCheckoutCompleted,
+} from "@/lib/payment-queries";
 
 export const runtime = "nodejs";
+
+type RevisionHistoryEntry = Record<string, unknown> & {
+  type?: string;
+};
 
 export async function POST(request: Request) {
   try {
     const stripe = getStripe();
+    await verifyStripeAccount();
     const webhookSecret = getStripeWebhookSecret();
 
     if (!webhookSecret) {
@@ -80,19 +91,28 @@ export async function POST(request: Request) {
           );
         }
 
-        const existingRevisionHistory = Array.isArray(order.revision_history)
-          ? order.revision_history
+        if (
+          order.order_status === "paid_revision_paid" &&
+          order.stripe_checkout_session_id === session.id
+        ) {
+          return NextResponse.json({ received: true });
+        }
+
+        const existingRevisionHistory: RevisionHistoryEntry[] = Array.isArray(
+          order.revision_history
+        )
+          ? (order.revision_history as RevisionHistoryEntry[])
           : [];
 
         const latestPaidQuoteIndex = existingRevisionHistory.findLastIndex(
-          (item: any) =>
+          (item) =>
             item.type === "awaiting_paid_revision_payment" ||
             item.type === "paid_revision_quote_requested"
         );
 
         const updatedRevisionHistory =
           latestPaidQuoteIndex >= 0
-            ? existingRevisionHistory.map((item: any, index: number) =>
+            ? existingRevisionHistory.map((item, index) =>
                 index === latestPaidQuoteIndex
                   ? {
                       ...item,
@@ -113,7 +133,7 @@ export async function POST(request: Request) {
                 },
               ];
 
-        const { error: updateError } = await supabase
+        const { data: updatedPaidRevision, error: updateError } = await supabase
           .from("orders")
           .update({
             order_status: "paid_revision_paid",
@@ -128,7 +148,11 @@ export async function POST(request: Request) {
             revision_history: updatedRevisionHistory,
             updated_at: now,
           })
-          .eq("id", orderId);
+          .eq("id", orderId)
+          .eq("order_status", "awaiting_priority_revision_payment")
+          .eq("stripe_checkout_session_id", session.id)
+          .select("id")
+          .maybeSingle();
 
         if (updateError) {
           console.error("Paid revision update failed", updateError);
@@ -139,8 +163,13 @@ export async function POST(request: Request) {
           );
         }
 
+        if (!updatedPaidRevision) {
+          return NextResponse.json({ received: true });
+        }
+
         if (order.client_email && process.env.RESEND_API_KEY) {
-          await resend.emails.send({
+          try {
+            const emailResult = await sendEmail({
             from:
               process.env.DELIVERY_FROM_EMAIL ||
               "FrameReady <deliveries@framereadystudio.com>",
@@ -201,48 +230,27 @@ export async function POST(request: Request) {
                 </table>
               </div>
             `,
-          });
+            });
+
+            if ((emailResult as { error?: unknown }).error) {
+              throw new Error("Paid revision receipt email was rejected.");
+            }
+          } catch (emailError) {
+            console.error("Paid revision receipt email failed", emailError);
+          }
         }
 
         return NextResponse.json({ received: true });
       }
 
       if (paymentType === "initial_order") {
-  
-  const { data: existingOrder, error: existingOrderError } = await supabase
-  .from("orders")
-  .select("order_status")
-  .eq("id", orderId)
-  .single();
-
-if (existingOrderError || !existingOrder) {
-  console.error("Could not fetch existing order before initial payment update", {
+const { data: updatedOrder, error: updateError } =
+  await markInitialCheckoutCompleted(
+    supabase,
     orderId,
-    existingOrderError,
-  });
-
-  return NextResponse.json({ received: true });
-}
-
-if (existingOrder.order_status !== "awaiting_payment") {
-
-  return NextResponse.json({ received: true });
-}
-
-const { data: updatedOrder, error: updateError } = await supabase
-  .from("orders")
-  .update({
-    payment_status: "paid",
-    order_status: "paid",
-    stripe_checkout_session_id: session.id,
-    stripe_payment_intent_id:
-      typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : null,
-  })
-  .eq("id", orderId)
-  .select("*")
-  .maybeSingle();
+    session.id,
+    typeof session.payment_intent === "string" ? session.payment_intent : null
+  );
 
 if (updateError) {
   console.error("Initial order payment update failed", updateError);
@@ -268,7 +276,8 @@ if (
   const orderLabel = order.public_order_id || order.id;
   const totalUsd = `$${((order.total_cents || 0) / 100).toFixed(2)} USD`;
 
-  await resend.emails.send({
+  try {
+    const emailResult = await sendEmail({
     from:
       process.env.DELIVERY_FROM_EMAIL ||
       "FrameReady <deliveries@framereadystudio.com>",
@@ -341,14 +350,21 @@ if (
       </table>
     </div>
   `,
-});
+    });
 
-  await supabase
-    .from("orders")
-    .update({
-      payment_receipt_sent_at: new Date().toISOString(),
-    })
-    .eq("id", order.id);
+    if ((emailResult as { error?: unknown }).error) {
+      throw new Error("Payment receipt email was rejected.");
+    }
+
+    await supabase
+      .from("orders")
+      .update({
+        payment_receipt_sent_at: new Date().toISOString(),
+      })
+      .eq("id", order.id);
+  } catch (emailError) {
+    console.error("Payment receipt email failed", emailError);
+  }
 }
 
 return NextResponse.json({ received: true });
@@ -362,14 +378,19 @@ return NextResponse.json({ received: true });
       const orderId = session.metadata?.orderId || session.client_reference_id;
 
       if (orderId) {
-        await supabase
-          .from("orders")
-          .update({
-            payment_status: "unpaid",
-            order_status: "awaiting_payment",
-            stripe_checkout_session_id: session.id,
-          })
-          .eq("id", orderId);
+        const { error: expirationUpdateError } = await markCheckoutExpired(
+          supabase,
+          orderId,
+          session.id
+        );
+
+        if (expirationUpdateError) {
+          console.error("Checkout expiration update failed", expirationUpdateError);
+          return NextResponse.json(
+            { error: expirationUpdateError.message },
+            { status: 500 }
+          );
+        }
       }
     }
 

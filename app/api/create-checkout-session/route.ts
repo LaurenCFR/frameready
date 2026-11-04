@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculatePricing } from "@/lib/pricing";
-import { getSiteUrl, getStripe } from "@/lib/stripe";
+import { getSiteUrl, getStripe, verifyStripeAccount } from "@/lib/stripe";
+import {
+  createOrReuseInitialCheckoutSession,
+  recordInitialCheckoutSession,
+  requireRecordedCheckoutSession,
+} from "@/lib/payment-queries";
 import type { AddOnId, OrderRow, PackageId } from "@/types/order";
 
 type CheckoutBody = {
@@ -50,6 +55,13 @@ export async function POST(request: Request) {
 
     const order = data as OrderRow;
 
+    if (order.payment_status === "paid") {
+      return NextResponse.json(
+        { error: "This order has already been paid." },
+        { status: 409 }
+      );
+    }
+
     if (!isPackageId(order.package_id) || !isAddOnIdArray(order.add_on_ids)) {
       return NextResponse.json(
         { error: "Order contains invalid pricing data." },
@@ -75,10 +87,16 @@ export async function POST(request: Request) {
     }
 
     const stripe = getStripe();
+    await verifyStripeAccount();
     const siteUrl = getSiteUrl();
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
+    const session = await createOrReuseInitialCheckoutSession({
+      stripe,
+      recordedSessionId: order.stripe_checkout_session_id ?? null,
+      orderId: order.id,
+      totalCents: trustedPricing.totalCents,
+      params: {
+        mode: "payment",
       success_url: `${siteUrl}/payment-success?order=${order.id}`,
       cancel_url: `${siteUrl}/upload?checkout=cancelled&order=${order.id}`,
       customer_email: order.client_email ?? undefined,
@@ -89,7 +107,7 @@ export async function POST(request: Request) {
   packageId: order.package_id,
   paymentType: "initial_order",
 },
-      line_items: [
+        line_items: [
         {
           quantity: 1,
           price_data: {
@@ -116,19 +134,15 @@ export async function POST(request: Request) {
             },
           },
         })),
-      ],
+        ],
+      },
     });
 
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        stripe_checkout_session_id: session.id,
-        order_status: "awaiting_payment",
-      })
-      .eq("id", order.id);
-
-    if (updateError) {
-      console.error("orders.update stripe session failed", updateError);
+    if (session.status === "complete") {
+      return NextResponse.json(
+        { error: "This checkout has already completed." },
+        { status: 409 }
+      );
     }
 
     if (!session.url) {
@@ -137,6 +151,13 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    const recordResult = await recordInitialCheckoutSession(
+      supabase,
+      order.id,
+      session.id
+    );
+    requireRecordedCheckoutSession(recordResult);
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (error) {

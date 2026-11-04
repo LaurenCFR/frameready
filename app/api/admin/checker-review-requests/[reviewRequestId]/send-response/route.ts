@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
 const DEFAULT_REVIEW_SUBJECT = "Your FrameReady Artwork Review";
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 type RouteContext = {
   params: Promise<{ reviewRequestId: string }>;
@@ -145,7 +144,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       </div>
     `;
 
-    const emailResult = await resend.emails.send({
+    const emailResult = await sendEmail({
       from: fromEmail,
       to: email,
       subject,
