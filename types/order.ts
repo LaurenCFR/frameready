@@ -92,6 +92,8 @@ export type OrderRow = {
   order_status: OrderStatus;
   stripe_checkout_session_id?: string | null;
   stripe_payment_intent_id?: string | null;
+  delivery_destinations?: DeliveryDestination[] | null;
+  delivery_destination_other?: string | null;
 
   localized_languages: string[] | null;
   add_on_labels: string[] | null;
@@ -134,6 +136,20 @@ export type AddOnId =
   | "logo_pack"
   | "express";
 
+export const DELIVERY_DESTINATIONS = [
+  "Filmhub",
+  "Amazon/Prime Video",
+  "Apple TV",
+  "Netflix",
+  "Roku",
+  "Tubi",
+  "YouTube",
+  "Other",
+  "Not sure yet",
+] as const;
+
+export type DeliveryDestination = (typeof DELIVERY_DESTINATIONS)[number];
+
 export type OrderCreateInput = {
   clientName: string;
   clientEmail: string;
@@ -146,6 +162,8 @@ export type OrderCreateInput = {
   uploadedFiles?: UploadedFileRecord[] | null;
   uploadedFontFiles?: UploadedFileRecord[] | null;
   notes?: string | null;
+  deliveryDestinations?: DeliveryDestination[];
+  deliveryDestinationOther?: string | null;
 };
 
 export type CurrencyCode = "usd" | "aud";
@@ -207,6 +225,8 @@ export type AdminOrder = {
 
   // Misc
   notes?: string;
+  deliveryDestinations?: DeliveryDestination[];
+  deliveryDestinationOther?: string;
 
   // Delivery metadata
   deliveredAt?: string;

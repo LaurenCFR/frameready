@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://framereadystudio.com"),
   title: "FrameReady | Streaming Platform Artwork QC & Formatting",
   description:
-    "Professional artwork QC & formatting for Filmhub, Amazon, Apple TV, Netflix, Tubi and streaming platforms. Get your artwork approved the first time.",
+    "Professional artwork QC and formatting tailored to the specifications for your selected streaming delivery destinations.",
   keywords: [
     "Filmhub artwork requirements",
     "Artwork failed QC",

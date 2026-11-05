@@ -13,17 +13,17 @@ export const PACKAGE_CONFIG: Record<
   essential: {
     id: "essential",
     name: "🧱 Essential",
-    priceCents: 9900,
+    priceCents: 4900,
   },
   pro: {
     id: "pro",
     name: "🔥 Pro",
-    priceCents: 19900,
+    priceCents: 9900,
   },
   studio: {
     id: "studio",
     name: "💎 Studio",
-    priceCents: 34900,
+    priceCents: 22900,
   },
 };
 
@@ -108,27 +108,83 @@ export function calculatePricing(params: {
   };
 }
 
+export function calculatePricingFromStoredPackagePrice(params: {
+  packageId: PackageId;
+  packageName: string;
+  packagePriceCents: number;
+  addOnIds: AddOnId[];
+  localizedLanguageCount?: number;
+}): PricingBreakdown {
+  const current = calculatePricing({
+    packageId: params.packageId,
+    addOnIds: params.addOnIds,
+    localizedLanguageCount: params.localizedLanguageCount,
+  });
+
+  if (!Number.isInteger(params.packagePriceCents) || params.packagePriceCents < 0) {
+    throw new Error("Stored package price is invalid.");
+  }
+
+  const addOnTotal = current.addOns.reduce(
+    (sum, addOn) => sum + addOn.unitPriceCents * addOn.quantity,
+    0
+  );
+  const totalCents = params.packagePriceCents + addOnTotal;
+
+  return {
+    ...current,
+    packageName: params.packageName,
+    packagePriceCents: params.packagePriceCents,
+    subtotalCents: totalCents,
+    totalCents,
+  };
+}
+
+export function getStoredPackagePriceCents(params: {
+  storedTotalCents: number;
+  packageId: PackageId;
+  addOnIds: AddOnId[];
+  localizedLanguageCount?: number;
+}): number {
+  const currentAddOns = calculatePricing({
+    packageId: params.packageId,
+    addOnIds: params.addOnIds,
+    localizedLanguageCount: params.localizedLanguageCount,
+  }).addOns;
+  const addOnTotal = currentAddOns.reduce(
+    (sum, addOn) => sum + addOn.unitPriceCents * addOn.quantity,
+    0
+  );
+  const packagePriceCents = params.storedTotalCents - addOnTotal;
+
+  if (!Number.isInteger(packagePriceCents) || packagePriceCents < 0) {
+    throw new Error("Stored order total is inconsistent with its add-ons.");
+  }
+
+  return packagePriceCents;
+}
+
 export function centsToUsd(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
 function runPricingChecks(): void {
-  console.assert(calculatePricing({ packageId: "essential", addOnIds: [] }).totalCents === 9900);
+  console.assert(calculatePricing({ packageId: "essential", addOnIds: [] }).totalCents === 4900);
   console.assert(
-    calculatePricing({ packageId: "pro", addOnIds: ["express"] }).totalCents === 24900
+    calculatePricing({ packageId: "pro", addOnIds: ["express"] }).totalCents === 14900
   );
   console.assert(
     calculatePricing({
       packageId: "pro",
       addOnIds: ["localized"],
       localizedLanguageCount: 3,
-    }).totalCents === 34900
+    }).totalCents === 24900
   );
   console.assert(
     calculatePricing({
       packageId: "studio",
       addOnIds: ["variation", "logo_pack"],
-    }).totalCents === 52400
+    }).totalCents === 40400
   );
 }
 

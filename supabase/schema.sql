@@ -31,6 +31,8 @@ create table if not exists public.orders (
   order_status text not null default 'draft',
   stripe_checkout_session_id text,
   stripe_payment_intent_id text,
+  delivery_destinations text[] not null default '{}',
+  delivery_destination_other text,
   payment_receipt_sent_at timestamptz,
   delivery_token text unique,
   delivered_at timestamptz,
@@ -65,6 +67,8 @@ alter table public.orders add column if not exists revision_count integer not nu
 alter table public.orders add column if not exists revision_limit integer not null default 1;
 alter table public.orders add column if not exists revision_email_sent_at timestamptz;
 alter table public.orders add column if not exists paid_revision_paid_at timestamptz;
+alter table public.orders add column if not exists delivery_destinations text[] not null default '{}';
+alter table public.orders add column if not exists delivery_destination_other text;
 
 create unique index if not exists orders_delivery_token_idx
   on public.orders (delivery_token)
