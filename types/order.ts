@@ -63,6 +63,8 @@ export type RevisionHistoryItem = {
   createdAt: string;
 
   amountUsd?: number;
+  amountCents?: number;
+  currency?: CurrencyCode;
 };
 
 export type UploadedFileRecord = {

@@ -6,6 +6,8 @@ import {
   createOrReuseInitialCheckoutSession,
   markCheckoutExpired,
   markInitialCheckoutCompleted,
+  markPriorityRevisionCheckoutCompleted,
+  markPriorityRevisionCheckoutExpired,
   recordInitialCheckoutSession,
   requireRecordedCheckoutSession,
 } from "../lib/payment-queries.ts";
@@ -193,4 +195,74 @@ test("expired webhook query requires unpaid and exact session identity", async (
 
   assert.ok(calls.some((call) => call[0] === "eq" && call[1] === "payment_status" && call[2] === "unpaid"));
   assert.ok(calls.some((call) => call[0] === "eq" && call[1] === "stripe_checkout_session_id" && call[2] === "cs_expired"));
+});
+
+test("paid-revision completion is atomic and session-scoped", async () => {
+  const { supabase, calls } = fakeSupabase({ data: { id: "order_1" } });
+  await markPriorityRevisionCheckoutCompleted(
+    supabase,
+    "order_1",
+    "cs_revision",
+    "pi_revision",
+    [],
+    "2026-11-11T00:00:00.000Z"
+  );
+
+  assert.ok(
+    calls.some(
+      (call) =>
+        call[0] === "eq" &&
+        call[1] === "order_status" &&
+        call[2] === "awaiting_priority_revision_payment"
+    )
+  );
+  assert.ok(
+    calls.some(
+      (call) =>
+        call[0] === "eq" &&
+        call[1] === "stripe_checkout_session_id" &&
+        call[2] === "cs_revision"
+    )
+  );
+});
+
+test("duplicate paid-revision delivery cannot update an already-paid row", async () => {
+  const { supabase, calls } = fakeSupabase({ data: null });
+  const result = await markPriorityRevisionCheckoutCompleted(
+    supabase,
+    "order_1",
+    "cs_revision",
+    "pi_revision",
+    [],
+    "2026-11-11T00:00:00.000Z"
+  );
+
+  assert.equal(result.data, null);
+  assert.ok(calls.some((call) => call[0] === "maybeSingle"));
+});
+
+test("paid-revision expiration requires awaiting status and exact session", async () => {
+  const { supabase, calls } = fakeSupabase({});
+  await markPriorityRevisionCheckoutExpired(
+    supabase,
+    "order_1",
+    "cs_expired_revision"
+  );
+
+  assert.ok(
+    calls.some(
+      (call) =>
+        call[0] === "eq" &&
+        call[1] === "order_status" &&
+        call[2] === "awaiting_priority_revision_payment"
+    )
+  );
+  assert.ok(
+    calls.some(
+      (call) =>
+        call[0] === "eq" &&
+        call[1] === "stripe_checkout_session_id" &&
+        call[2] === "cs_expired_revision"
+    )
+  );
 });

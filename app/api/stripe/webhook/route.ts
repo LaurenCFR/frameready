@@ -9,18 +9,25 @@ import {
 } from "@/lib/stripe";
 import { sendEmail } from "@/lib/email";
 import {
-  isInitialOrderPaymentEvent,
+  getStoredPriorityRevisionQuote,
+  isCheckoutPaymentSuccessEvent,
   validateInitialOrderPayment,
+  validatePriorityRevisionPayment,
 } from "@/lib/checkout-payment-validation";
 import {
   markCheckoutExpired,
   markInitialCheckoutCompleted,
+  markPriorityRevisionCheckoutCompleted,
+  markPriorityRevisionCheckoutExpired,
 } from "@/lib/payment-queries";
 
 export const runtime = "nodejs";
 
 type RevisionHistoryEntry = Record<string, unknown> & {
   type?: string;
+  amountCents?: number;
+  amountUsd?: number;
+  currency?: string;
 };
 
 export async function POST(request: Request) {
@@ -64,7 +71,7 @@ export async function POST(request: Request) {
 
     const supabase = createSupabaseAdminClient();
 
-    if (isInitialOrderPaymentEvent(event.type)) {
+    if (isCheckoutPaymentSuccessEvent(event.type)) {
       const session = event.data.object as Stripe.Checkout.Session;
 
       const orderId = session.metadata?.orderId || session.client_reference_id;
@@ -77,10 +84,7 @@ export async function POST(request: Request) {
         );
       }
 
-      if (
-        event.type === "checkout.session.completed" &&
-        paymentType === "priority_revision"
-      ) {
+      if (paymentType === "priority_revision") {
 
 
         const now = new Date().toISOString();
@@ -111,6 +115,36 @@ export async function POST(request: Request) {
           ? (order.revision_history as RevisionHistoryEntry[])
           : [];
 
+        const storedQuote = getStoredPriorityRevisionQuote(
+          existingRevisionHistory
+        );
+
+        if (!storedQuote) {
+          return NextResponse.json(
+            { error: "Stored paid revision quote is missing or invalid." },
+            { status: 400 }
+          );
+        }
+
+        const paymentValidation = validatePriorityRevisionPayment({
+          paymentStatus: session.payment_status,
+          amountTotal: session.amount_total,
+          currency: session.currency,
+          storedTotalCents: storedQuote.amountCents,
+          storedCurrency: storedQuote.currency,
+        });
+
+        if (paymentValidation.kind === "pending") {
+          return NextResponse.json({ received: true, paymentPending: true });
+        }
+
+        if (paymentValidation.kind === "rejected") {
+          return NextResponse.json(
+            { error: paymentValidation.error },
+            { status: 400 }
+          );
+        }
+
         const latestPaidQuoteIndex = existingRevisionHistory.findLastIndex(
           (item) =>
             item.type === "awaiting_paid_revision_payment" ||
@@ -126,7 +160,9 @@ export async function POST(request: Request) {
                       type: "paid_revision_paid",
                       status: "paid",
                       paidAt: now,
+                      amountCents: storedQuote.amountCents,
                       amountUsd: Number(session.amount_total || 0) / 100,
+                      currency: storedQuote.currency,
                     }
                   : item
               )
@@ -136,30 +172,23 @@ export async function POST(request: Request) {
                   type: "paid_revision_paid",
                   status: "paid",
                   createdAt: now,
+                  amountCents: storedQuote.amountCents,
                   amountUsd: Number(session.amount_total || 0) / 100,
+                  currency: storedQuote.currency,
                 },
               ];
 
-        const { data: updatedPaidRevision, error: updateError } = await supabase
-          .from("orders")
-          .update({
-            order_status: "paid_revision_paid",
-            paid_revision_paid_at: now,
-            stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id:
-              typeof session.payment_intent === "string"
-                ? session.payment_intent
-                : null,
-            revision_request_message:
-              "Paid revision payment received. Revision work can begin.",
-            revision_history: updatedRevisionHistory,
-            updated_at: now,
-          })
-          .eq("id", orderId)
-          .eq("order_status", "awaiting_priority_revision_payment")
-          .eq("stripe_checkout_session_id", session.id)
-          .select("id")
-          .maybeSingle();
+        const { data: updatedPaidRevision, error: updateError } =
+          await markPriorityRevisionCheckoutCompleted(
+            supabase,
+            orderId,
+            session.id,
+            typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : null,
+            updatedRevisionHistory,
+            now
+          );
 
         if (updateError) {
           console.error("Paid revision update failed", updateError);
@@ -417,11 +446,15 @@ return NextResponse.json({ received: true });
       const orderId = session.metadata?.orderId || session.client_reference_id;
 
       if (orderId) {
-        const { error: expirationUpdateError } = await markCheckoutExpired(
-          supabase,
-          orderId,
-          session.id
-        );
+        const paymentType = session.metadata?.paymentType;
+        const { error: expirationUpdateError } =
+          paymentType === "priority_revision"
+            ? await markPriorityRevisionCheckoutExpired(
+                supabase,
+                orderId,
+                session.id
+              )
+            : await markCheckoutExpired(supabase, orderId, session.id);
 
         if (expirationUpdateError) {
           console.error("Checkout expiration update failed", expirationUpdateError);

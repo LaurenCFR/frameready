@@ -66,7 +66,8 @@ if (!order) {
 
       if (
         existingCheckout.status === "open" &&
-        existingCheckout.amount_total === amountCents
+        existingCheckout.amount_total === amountCents &&
+        existingCheckout.currency === "usd"
       ) {
         checkout = existingCheckout;
       }
@@ -134,7 +135,9 @@ if (!order) {
             {
               type: "awaiting_paid_revision_payment",
               createdAt: now,
+              amountCents,
               amountUsd: amountCents / 100,
+              currency: "usd",
             },
           ],
         })

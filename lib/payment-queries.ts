@@ -73,6 +73,46 @@ export async function markCheckoutExpired(
     .eq("stripe_checkout_session_id", sessionId);
 }
 
+export async function markPriorityRevisionCheckoutCompleted(
+  supabase: SupabaseClient,
+  orderId: string,
+  sessionId: string,
+  paymentIntentId: string | null,
+  revisionHistory: unknown,
+  paidAt: string
+) {
+  return supabase
+    .from("orders")
+    .update({
+      order_status: "paid_revision_paid",
+      paid_revision_paid_at: paidAt,
+      stripe_checkout_session_id: sessionId,
+      stripe_payment_intent_id: paymentIntentId,
+      revision_request_message:
+        "Paid revision payment received. Revision work can begin.",
+      revision_history: revisionHistory,
+      updated_at: paidAt,
+    })
+    .eq("id", orderId)
+    .eq("order_status", "awaiting_priority_revision_payment")
+    .eq("stripe_checkout_session_id", sessionId)
+    .select("id")
+    .maybeSingle();
+}
+
+export async function markPriorityRevisionCheckoutExpired(
+  supabase: SupabaseClient,
+  orderId: string,
+  sessionId: string
+) {
+  return supabase
+    .from("orders")
+    .update({ order_status: "paid_revision_quote_requested" })
+    .eq("id", orderId)
+    .eq("order_status", "awaiting_priority_revision_payment")
+    .eq("stripe_checkout_session_id", sessionId);
+}
+
 export async function createOrReuseInitialCheckoutSession({
   stripe,
   recordedSessionId,

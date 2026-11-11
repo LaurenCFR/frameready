@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://framereadystudio.com"),
+  metadataBase: new URL("https://www.framereadystudio.com"),
   title: "FrameReady | Streaming Platform Artwork QC & Formatting",
   description:
     "Professional artwork QC and formatting tailored to the specifications for your selected streaming delivery destinations.",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     title: "FrameReady",
     description:
       "Professional artwork QC & formatting for streaming platforms.",
-    url: "https://framereadystudio.com",
+    url: "https://www.framereadystudio.com",
     siteName: "FrameReady",
     images: [
       {

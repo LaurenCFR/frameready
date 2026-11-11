@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  isInitialOrderPaymentEvent,
+  getStoredPriorityRevisionQuote,
+  isCheckoutPaymentSuccessEvent,
   validateInitialOrderPayment,
+  validatePriorityRevisionPayment,
 } from "../lib/checkout-payment-validation.ts";
 
 const validPayment = {
@@ -45,13 +47,60 @@ test("rejects a paid Checkout Session with the wrong currency", () => {
 });
 
 test("handles Stripe's later success event for delayed payment methods", () => {
-  assert.equal(isInitialOrderPaymentEvent("checkout.session.completed"), true);
+  assert.equal(isCheckoutPaymentSuccessEvent("checkout.session.completed"), true);
   assert.equal(
-    isInitialOrderPaymentEvent("checkout.session.async_payment_succeeded"),
+    isCheckoutPaymentSuccessEvent("checkout.session.async_payment_succeeded"),
     true
   );
   assert.equal(
-    isInitialOrderPaymentEvent("checkout.session.async_payment_failed"),
+    isCheckoutPaymentSuccessEvent("checkout.session.async_payment_failed"),
     false
+  );
+});
+
+test("leaves an unpaid paid-revision completion pending", () => {
+  assert.deepEqual(
+    validatePriorityRevisionPayment({
+      ...validPayment,
+      paymentStatus: "unpaid",
+    }),
+    { kind: "pending" }
+  );
+});
+
+test("rejects paid-revision amount and currency mismatches", () => {
+  assert.equal(
+    validatePriorityRevisionPayment({ ...validPayment, amountTotal: 10000 })
+      .kind,
+    "rejected"
+  );
+  assert.equal(
+    validatePriorityRevisionPayment({ ...validPayment, currency: "aud" })
+      .kind,
+    "rejected"
+  );
+});
+
+test("reads the stored paid-revision amount and currency", () => {
+  assert.deepEqual(
+    getStoredPriorityRevisionQuote([
+      { type: "paid_revision_quote_requested" },
+      {
+        type: "awaiting_paid_revision_payment",
+        amountCents: 12500,
+        amountUsd: 125,
+        currency: "USD",
+      },
+    ]),
+    { amountCents: 12500, currency: "usd" }
+  );
+});
+
+test("supports legacy USD paid-revision quote records", () => {
+  assert.deepEqual(
+    getStoredPriorityRevisionQuote([
+      { type: "awaiting_paid_revision_payment", amountUsd: 125 },
+    ]),
+    { amountCents: 12500, currency: "usd" }
   );
 });
