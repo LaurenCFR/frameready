@@ -23,13 +23,13 @@ Set every variable below with **Production only** scope. Do not copy these value
 | `FRAMEREADY_ENVIRONMENT` | `production` |
 | `NEXT_PUBLIC_FRAMEREADY_ENVIRONMENT` | `production` |
 | `NEXT_PUBLIC_SITE_URL` | `https://framereadystudio.com` (no trailing slash) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Production Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production Supabase anon/publishable key |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://udbnfwxmlhhsojotsjmz.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production `sb_publishable_` key from Supabase project `udbnfwxmlhhsojotsjmz` (legacy variable name) |
 | `NEXT_PUBLIC_SUPABASE_PROJECT_REF` | Production project reference from the Supabase URL |
 | `NEXT_PUBLIC_PRODUCTION_SUPABASE_PROJECT_REF` | The Production project reference |
 | `SUPABASE_PROJECT_REF` | The same Production project reference |
 | `SUPABASE_PRODUCTION_PROJECT_REF` | The same Production project reference |
-| `SUPABASE_SERVICE_ROLE_KEY` | Production service-role secret |
+| `SUPABASE_SERVICE_ROLE_KEY` | Production `sb_secret_` key from Supabase project `udbnfwxmlhhsojotsjmz`; server-only (legacy variable name) |
 | `STRIPE_SECRET_KEY` | FrameReady account live key beginning `sk_live_` |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the Production endpoint below |
 | `STRIPE_EXPECTED_ACCOUNT_ID` | FrameReady Stripe account ID beginning `acct_` |
@@ -53,12 +53,12 @@ Set every variable below with **Preview only** scope. These must belong to isola
 | `FRAMEREADY_ENVIRONMENT` | `preview` |
 | `NEXT_PUBLIC_FRAMEREADY_ENVIRONMENT` | `preview` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Separate Preview Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Preview Supabase anon/publishable key |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Preview project's `sb_publishable_` key (legacy variable name) |
 | `NEXT_PUBLIC_SUPABASE_PROJECT_REF` | Preview project reference from the Preview URL |
 | `NEXT_PUBLIC_PRODUCTION_SUPABASE_PROJECT_REF` | Production project reference; used only to block accidental Production access |
 | `SUPABASE_PROJECT_REF` | The same Preview project reference |
 | `SUPABASE_PRODUCTION_PROJECT_REF` | Production project reference; used only to block accidental Production access |
-| `SUPABASE_SERVICE_ROLE_KEY` | Preview service-role secret |
+| `SUPABASE_SERVICE_ROLE_KEY` | Preview project's `sb_secret_` key; server-only (legacy variable name) |
 | `STRIPE_SECRET_KEY` | Correct FrameReady sandbox key beginning `sk_test_` |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the Preview endpoint below |
 | `STRIPE_EXPECTED_ACCOUNT_ID` | Account ID shown while signed into the correct FrameReady Stripe sandbox account |
@@ -79,9 +79,9 @@ Do **not** set `NEXT_PUBLIC_SITE_URL` or `SITE_URL` for Preview. In **Vercel →
 3. Confirm both buckets exist and are **Private**:
    - `order-uploads` for source files, fonts, and deliveries.
    - `review-requests` for checker review uploads.
-4. Keep RLS enabled on all four application tables. Create no anon/authenticated table policies: current table access is server-only through the service role.
-5. Create no public `storage.objects` policies. Server operations use the service role; browser order uploads use a token created by `createSignedUploadUrl` and consumed by `uploadToSignedUrl`.
-6. Put the Preview project URL, anon key, service-role key, and project reference into Preview-scoped Vercel variables.
+4. Keep RLS enabled on all four application tables. Create no anon/authenticated table policies: current table access is server-only through the secret key's elevated role.
+5. Create no public `storage.objects` policies. Server operations use the secret key; browser order uploads use a token created by `createSignedUploadUrl` and consumed by `uploadToSignedUrl` with the publishable client.
+6. Put the Preview project URL, `sb_publishable_` key, `sb_secret_` key, and project reference into Preview-scoped Vercel variables. Although the Vercel variable names retain `ANON` and `SERVICE_ROLE` for deployment compatibility, their values must be the new key types.
 7. Create a disposable Preview order, checker report, order upload, and review-request upload. Verify all rows and both objects exist only in the Preview project.
 
 Never import Production customer data, delivery tokens, or order files into Preview.
