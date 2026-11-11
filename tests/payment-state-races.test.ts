@@ -61,3 +61,18 @@ test("completion from an old session never pays a newer session", () => {
 
   assert.deepEqual(result, unpaid("cs_new"));
 });
+
+test("duplicate paid delivery is idempotent", () => {
+  const first = completeInitialCheckoutSession(unpaid("cs_current"), "cs_current");
+  const duplicate = completeInitialCheckoutSession(first, "cs_current");
+
+  assert.deepEqual(duplicate, first);
+});
+
+test("an expired-session race cannot undo a later successful payment", () => {
+  const expired = expireCheckoutSession(unpaid("cs_current"), "cs_current");
+  const paid = completeInitialCheckoutSession(expired, "cs_current");
+  const lateExpiration = expireCheckoutSession(paid, "cs_current");
+
+  assert.deepEqual(lateExpiration, paid);
+});

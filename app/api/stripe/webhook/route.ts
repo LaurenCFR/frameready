@@ -9,6 +9,10 @@ import {
 } from "@/lib/stripe";
 import { sendEmail } from "@/lib/email";
 import {
+  isInitialOrderPaymentEvent,
+  validateInitialOrderPayment,
+} from "@/lib/checkout-payment-validation";
+import {
   markCheckoutExpired,
   markInitialCheckoutCompleted,
 } from "@/lib/payment-queries";
@@ -60,7 +64,7 @@ export async function POST(request: Request) {
 
     const supabase = createSupabaseAdminClient();
 
-    if (event.type === "checkout.session.completed") {
+    if (isInitialOrderPaymentEvent(event.type)) {
       const session = event.data.object as Stripe.Checkout.Session;
 
       const orderId = session.metadata?.orderId || session.client_reference_id;
@@ -73,7 +77,10 @@ export async function POST(request: Request) {
         );
       }
 
-      if (paymentType === "priority_revision") {
+      if (
+        event.type === "checkout.session.completed" &&
+        paymentType === "priority_revision"
+      ) {
 
 
         const now = new Date().toISOString();
@@ -244,6 +251,38 @@ export async function POST(request: Request) {
       }
 
       if (paymentType === "initial_order") {
+        const { data: storedOrder, error: storedOrderError } = await supabase
+          .from("orders")
+          .select("id, total_cents, currency")
+          .eq("id", orderId)
+          .single();
+
+        if (storedOrderError || !storedOrder) {
+          return NextResponse.json(
+            { error: "Initial order not found." },
+            { status: 404 }
+          );
+        }
+
+        const paymentValidation = validateInitialOrderPayment({
+          paymentStatus: session.payment_status,
+          amountTotal: session.amount_total,
+          currency: session.currency,
+          storedTotalCents: storedOrder.total_cents,
+          storedCurrency: storedOrder.currency,
+        });
+
+        if (paymentValidation.kind === "pending") {
+          return NextResponse.json({ received: true, paymentPending: true });
+        }
+
+        if (paymentValidation.kind === "rejected") {
+          return NextResponse.json(
+            { error: paymentValidation.error },
+            { status: 400 }
+          );
+        }
+
 const { data: updatedOrder, error: updateError } =
   await markInitialCheckoutCompleted(
     supabase,

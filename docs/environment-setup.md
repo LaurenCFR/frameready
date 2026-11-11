@@ -10,7 +10,7 @@ This application deliberately fails closed when an environment is mixed. A Verce
 4. Test the Preview deployment end to end against Preview-only services.
 5. Merge to `main` only after the checklist below passes. A merge to `main` is the production release action.
 
-In Vercel, open **Project → Settings → Environments** and make sure Preview variables are not inheriting Production secrets. Open **Project → Settings → Git** and confirm the Production Branch is `main`. Do not assign `framereadystudio.com` to a Preview deployment.
+In Vercel, open **Project → Settings → Environments** and make sure Preview variables are not inheriting Production secrets. Open **Project → Settings → Git** and confirm the Production Branch is `main`. Do not assign `www.framereadystudio.com` to a Preview deployment.
 
 Before merging this branch, configure every new **Production-only** variable below and create the Production Stripe webhook. The code intentionally fails closed when a required value is absent; merging first would break checkout, Supabase access, and email on Production.
 
@@ -22,7 +22,7 @@ Set every variable below with **Production only** scope. Do not copy these value
 | --- | --- |
 | `FRAMEREADY_ENVIRONMENT` | `production` |
 | `NEXT_PUBLIC_FRAMEREADY_ENVIRONMENT` | `production` |
-| `NEXT_PUBLIC_SITE_URL` | `https://framereadystudio.com` (no trailing slash) |
+| `NEXT_PUBLIC_SITE_URL` | `https://www.framereadystudio.com` (no trailing slash) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://udbnfwxmlhhsojotsjmz.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Production `sb_publishable_` key from Supabase project `udbnfwxmlhhsojotsjmz` (legacy variable name) |
 | `NEXT_PUBLIC_SUPABASE_PROJECT_REF` | Production project reference from the Supabase URL |
@@ -99,11 +99,12 @@ The application checks the key mode and calls Stripe's current-account API befor
 Create two separate webhook destinations:
 
 - Preview: `https://<VERCEL_BRANCH_URL>/api/stripe/webhook`
-- Production: `https://framereadystudio.com/api/stripe/webhook`
+- Production: `https://www.framereadystudio.com/api/stripe/webhook`
 
 Subscribe each endpoint only to:
 
 - `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
 - `checkout.session.expired`
 
 Copy each endpoint's own `whsec_...` signing secret into the matching Vercel scope. A signing secret is endpoint-specific; never reuse the Production secret in Preview. After changing a Preview endpoint or secret, redeploy the Preview branch before testing.
@@ -131,7 +132,7 @@ Copy `.env.example` to `.env.local` and use only Preview/Sandbox credentials. Fo
 
 ## End-to-end Preview checklist
 
-- [ ] `VERCEL_BRANCH_URL` exists and is not `framereadystudio.com`.
+- [ ] `VERCEL_BRANCH_URL` exists and is not `www.framereadystudio.com`.
 - [ ] Stripe's Preview destination uses that branch URL and reaches the handler after a second deployment of the same branch.
 - [ ] Deployment Protection either permits that endpoint or the Stripe URL includes the automation-bypass query parameter.
 - [ ] Preview environment variables have Preview-only scope and Production variables have Production-only scope.
