@@ -1,7 +1,32 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { ADD_ON_CONFIG, calculatePricing, PACKAGE_CONFIG } from "@/lib/pricing";
-import type { AddOnId, OrderCreateInput, OrderRow, PackageId } from "@/types/order";
+import {
+  ADD_ON_CONFIG,
+  calculatePricing,
+  calculatePricingFromStoredPackagePrice,
+  getStoredPackagePriceCents,
+  PACKAGE_CONFIG,
+} from "@/lib/pricing";
+import {
+  DESTINATION_MIGRATION_REQUIRED_MESSAGE,
+  destinationMigrationIsRequired,
+  isDestinationSchemaMissing,
+} from "@/lib/destination-persistence";
+import {
+  DELIVERY_DESTINATIONS,
+  type AddOnId,
+  type DeliveryDestination,
+  type OrderCreateInput,
+  type OrderRow,
+  type PackageId,
+} from "@/types/order";
+
+function withoutDestinationFields(value: Record<string, unknown>) {
+  const legacyValue = { ...value };
+  delete legacyValue.delivery_destinations;
+  delete legacyValue.delivery_destination_other;
+  return legacyValue;
+}
 
 function isPackageId(value: unknown): value is PackageId {
   return typeof value === "string" && value in PACKAGE_CONFIG;
@@ -26,6 +51,13 @@ function sanitizeStringArray(value: unknown, maxItems = 25, maxLen = 100): strin
     .map((item) => item.trim().slice(0, maxLen))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function sanitizeDeliveryDestinations(value: unknown): DeliveryDestination[] {
+  const allowed = new Set<string>(DELIVERY_DESTINATIONS);
+  return Array.from(
+    new Set(sanitizeStringArray(value, DELIVERY_DESTINATIONS.length, 50))
+  ).filter((item): item is DeliveryDestination => allowed.has(item));
 }
 
 function sanitizeLocalizedTitles(value: unknown): Record<string, string> {
@@ -90,6 +122,12 @@ function validatePayload(body: unknown): OrderCreateInput {
 
   const localizedLanguages = sanitizeStringArray(input.localizedLanguages);
   const localizedTitles = sanitizeLocalizedTitles(input.localizedTitles);
+  const deliveryDestinations = sanitizeDeliveryDestinations(
+    input.deliveryDestinations
+  );
+  const deliveryDestinationOther = deliveryDestinations.includes("Other")
+    ? sanitizeString(input.deliveryDestinationOther, 200) || null
+    : null;
 
   const uploadedFiles = sanitizeUploadedFiles(input.uploadedFiles);
   const uploadedFontFiles = sanitizeUploadedFiles(input.uploadedFontFiles);
@@ -107,6 +145,8 @@ function validatePayload(body: unknown): OrderCreateInput {
     packageFontInfo: sanitizeString(input.packageFontInfo, 5000) || null,
     uploadedFiles,
     uploadedFontFiles,
+    deliveryDestinations,
+    deliveryDestinationOther,
   };
 }
 
@@ -161,13 +201,34 @@ export async function POST(request: Request) {
 
       payment_status: "unpaid",
       order_status: "awaiting_payment",
+      delivery_destinations: input.deliveryDestinations,
+      delivery_destination_other: input.deliveryDestinationOther,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("orders")
       .insert(rowToInsert)
       .select("*")
       .single();
+
+    if (destinationMigrationIsRequired(error, input.deliveryDestinations || [])) {
+      return NextResponse.json(
+        {
+          error: DESTINATION_MIGRATION_REQUIRED_MESSAGE,
+          code: "DESTINATION_MIGRATION_REQUIRED",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (isDestinationSchemaMissing(error)) {
+      const legacyRow = withoutDestinationFields(rowToInsert);
+      ({ data, error } = await supabase
+        .from("orders")
+        .insert(legacyRow)
+        .select("*")
+        .single());
+    }
 
     if (error) {
       console.error("orders.insert failed", error);
@@ -205,7 +266,7 @@ export async function PATCH(req: Request) {
     }
 const { data: existingOrder, error: fetchError } = await supabase
   .from("orders")
-  .select("package_id, add_on_ids")
+  .select("package_id, package_name, add_on_ids, localized_languages, total_cents")
   .eq("id", body.orderId)
   .single();
 
@@ -218,15 +279,33 @@ const localizedLanguageCount =
     ? body.localizedLanguages.length
     : 1;
 
-const pricing = calculatePricing({
+const previousLocalizedLanguageCount =
+  Array.isArray(existingOrder.localized_languages) &&
+  existingOrder.localized_languages.length > 0
+    ? existingOrder.localized_languages.length
+    : 1;
+const packagePriceCents = getStoredPackagePriceCents({
+  storedTotalCents: existingOrder.total_cents,
   packageId: existingOrder.package_id,
+  addOnIds: existingOrder.add_on_ids || [],
+  localizedLanguageCount: previousLocalizedLanguageCount,
+});
+const pricing = calculatePricingFromStoredPackagePrice({
+  packageId: existingOrder.package_id,
+  packageName: existingOrder.package_name,
+  packagePriceCents,
   addOnIds: existingOrder.add_on_ids || [],
   localizedLanguageCount,
 });
 
-    const { error } = await supabase
-      .from("orders")
-      .update({
+    const deliveryDestinations = sanitizeDeliveryDestinations(
+      body.deliveryDestinations
+    );
+    const deliveryDestinationOther = deliveryDestinations.includes("Other")
+      ? sanitizeString(body.deliveryDestinationOther, 200) || null
+      : null;
+
+    const updateValues = {
         client_name: body.clientName,
         client_email: body.clientEmail,
         notes: body.notes,
@@ -248,8 +327,32 @@ const pricing = calculatePricing({
 
         order_status: "awaiting_payment",
         updated_at: new Date().toISOString(),
-      })
+        delivery_destinations: deliveryDestinations,
+        delivery_destination_other: deliveryDestinationOther,
+      };
+
+    let { error } = await supabase
+      .from("orders")
+      .update(updateValues)
       .eq("id", body.orderId);
+
+    if (destinationMigrationIsRequired(error, deliveryDestinations)) {
+      return NextResponse.json(
+        {
+          error: DESTINATION_MIGRATION_REQUIRED_MESSAGE,
+          code: "DESTINATION_MIGRATION_REQUIRED",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (isDestinationSchemaMissing(error)) {
+      const legacyValues = withoutDestinationFields(updateValues);
+      ({ error } = await supabase
+        .from("orders")
+        .update(legacyValues)
+        .eq("id", body.orderId));
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

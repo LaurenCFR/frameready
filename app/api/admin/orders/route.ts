@@ -5,16 +5,6 @@ import type { OrderRow, OrderStatus } from "@/types/order";
 
 export const runtime = "nodejs";
 
-function formatSubmittedAt(iso?: string | null): string {
-  if (!iso) return "";
-
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
 function getTurnaround(status: OrderStatus): string {
   switch (status) {
     case "draft":
@@ -110,9 +100,11 @@ export async function GET() {
           status: order.order_status,
           paid: order.payment_status === "paid",
           turnaround: getTurnaround(order.order_status),
-          submittedAt: formatSubmittedAt(order.created_at),
+          submittedAt: order.created_at || "",
           languages: order.localized_languages || [],
           addOns: order.add_on_labels || [],
+          deliveryDestinations: order.delivery_destinations || [],
+          deliveryDestinationOther: order.delivery_destination_other || "",
           sourceFiles,
           revision_delivery_sets: order.revision_delivery_sets ?? [],
           delivery_sets: order.delivery_sets ?? [],

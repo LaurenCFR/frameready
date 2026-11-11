@@ -4,6 +4,6 @@ export default function robots() {
       userAgent: "*",
       allow: "/",
     },
-    sitemap: "https://framereadystudio.com/sitemap.xml",
+    sitemap: "https://www.framereadystudio.com/sitemap.xml",
   };
 }

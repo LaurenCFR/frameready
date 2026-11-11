@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { getSiteUrl, getStripe } from "@/lib/stripe";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { getSiteUrl, getStripe, verifyStripeAccount } from "@/lib/stripe";
+import { sendEmail } from "@/lib/email";
+import type Stripe from "stripe";
 
 export async function POST(req: Request) {
   const session = await requireAdminSession();
@@ -51,36 +50,68 @@ if (!order) {
 }
 
     const stripe = getStripe();
+    await verifyStripeAccount();
     const siteUrl = getSiteUrl();
 
-    const checkout = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: `${siteUrl}/paid-revision-success?order=${order.public_order_id ?? order.id}`,
-      cancel_url: `${siteUrl}/delivery/${order.delivery_token}?paidRevision=cancelled`,
-      customer_email: order.client_email ?? undefined,
-      client_reference_id: order.id,
-      metadata: {
-        orderId: order.id,
-        publicOrderId: order.public_order_id ?? "",
-        paymentType: "priority_revision",
-      },
-      
-      line_items: [
+    let checkout: Stripe.Checkout.Session | null = null;
+    let createdNewCheckout = false;
+
+    if (
+      order.order_status === "awaiting_priority_revision_payment" &&
+      order.stripe_checkout_session_id
+    ) {
+      const existingCheckout = await stripe.checkout.sessions.retrieve(
+        order.stripe_checkout_session_id
+      );
+
+      if (
+        existingCheckout.status === "open" &&
+        existingCheckout.amount_total === amountCents &&
+        existingCheckout.currency === "usd"
+      ) {
+        checkout = existingCheckout;
+      }
+    }
+
+    if (!checkout) {
+      checkout = await stripe.checkout.sessions.create(
         {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: amountCents,
-            product_data: {
-              name: "FrameReady Paid Revision",
-              description: `Paid revision for order ${
-                order.public_order_id ?? order.id
-              }`,
-            },
-          },
+          mode: "payment",
+        success_url: `${siteUrl}/paid-revision-success?order=${order.public_order_id ?? order.id}`,
+        cancel_url: `${siteUrl}/delivery/${order.delivery_token}?paidRevision=cancelled`,
+        customer_email: order.client_email ?? undefined,
+        client_reference_id: order.id,
+        metadata: {
+          orderId: order.id,
+          publicOrderId: order.public_order_id ?? "",
+          paymentType: "priority_revision",
         },
-      ],
-    });
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: "usd",
+                unit_amount: amountCents,
+                product_data: {
+                  name: "FrameReady Paid Revision",
+                  description: `Paid revision for order ${
+                    order.public_order_id ?? order.id
+                  }`,
+                },
+              },
+            },
+          ],
+        },
+        {
+          idempotencyKey: `priority-revision-${order.id}-${amountCents}-${
+            Array.isArray(order.revision_history)
+              ? order.revision_history.length
+              : 0
+          }`,
+        }
+      );
+      createdNewCheckout = true;
+    }
 
     if (!checkout.url) {
       return NextResponse.json(
@@ -89,7 +120,35 @@ if (!order) {
       );
     }
 
-    await resend.emails.send({
+    if (createdNewCheckout) {
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+          order_status: "awaiting_priority_revision_payment",
+          stripe_checkout_session_id: checkout.id,
+          updated_at: now,
+          revision_history: [
+            ...(Array.isArray(order.revision_history)
+              ? order.revision_history
+              : []),
+            {
+              type: "awaiting_paid_revision_payment",
+              createdAt: now,
+              amountCents,
+              amountUsd: amountCents / 100,
+              currency: "usd",
+            },
+          ],
+        })
+        .eq("id", order.id);
+
+      if (updateError) {
+        throw new Error(`Could not save paid revision checkout: ${updateError.message}`);
+      }
+    }
+
+    const emailResult = await sendEmail({
       from: process.env.DELIVERY_FROM_EMAIL!,
       to: order.client_email,
       subject: `Paid revision quote – ${order.public_order_id ?? order.id}`,
@@ -154,21 +213,12 @@ if (!order) {
 `,
     });
 
-    await supabase
-      .from("orders")
-      .update({
-        order_status: "awaiting_priority_revision_payment",
-        updated_at: new Date().toISOString(),
-        revision_history: [
-  ...(Array.isArray(order.revision_history) ? order.revision_history : []),
-  {
-    type: "awaiting_paid_revision_payment",
-    createdAt: new Date().toISOString(),
-    amountUsd: amountCents / 100,
-  },
-],
-      })
-      .eq("id", order.id);
+    if ((emailResult as { error?: { message?: string } | null }).error) {
+      throw new Error(
+        (emailResult as { error?: { message?: string } | null }).error?.message ||
+          "Paid revision quote email failed."
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

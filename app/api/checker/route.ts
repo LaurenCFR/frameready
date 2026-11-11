@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email";
+import { getSiteUrl } from "@/lib/environment";
 
 export const runtime = "nodejs";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 const MAX_TEXT_LENGTH = 500;
 const MAX_RESULTS = 300;
@@ -52,14 +51,6 @@ function escapeHtml(value: unknown): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function getSiteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.SITE_URL ||
-    "http://localhost:3000"
-  ).replace(/\/$/, "");
 }
 
 function getObjectText(value: Record<string, unknown>, key: string): string {
@@ -301,7 +292,7 @@ async function sendCheckerReportEmail(params: {
     </div>
   `;
 
-  const emailResult = await resend.emails.send({
+  const emailResult = await sendEmail({
     from: fromEmail,
     to: params.email,
     subject: "Your FrameReady artwork checker report",

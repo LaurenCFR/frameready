@@ -1,18 +1,12 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import "server-only";
 
-function getEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdminConfig } from "@/lib/environment";
 
 export function createSupabaseAdminClient(): SupabaseClient {
-  const url = getEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const { url, secretKey } = getSupabaseAdminConfig();
 
-  return createClient(url, serviceRoleKey, {
+  return createClient(url, secretKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

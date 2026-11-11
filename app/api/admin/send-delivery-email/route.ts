@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { generateDeliveryToken } from "@/lib/delivery-token";
+import { sendEmail } from "@/lib/email";
+import { getSiteUrl } from "@/lib/environment";
 import type { UploadedFileRecord } from "@/types/order";
 
 export const runtime = "nodejs";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-function getSiteUrl() {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.SITE_URL ||
-    "http://localhost:3000"
-  ).replace(/\/$/, "");
-}
 
 export async function POST(request: NextRequest) {
   const session = await requireAdminSession();
@@ -177,7 +168,7 @@ const emailHtml = `
       </div>
     `;
 
-    const emailResult = await resend.emails.send({
+    const emailResult = await sendEmail({
   from:
     process.env.DELIVERY_FROM_EMAIL ||
     "FrameReady <deliveries@framereadystudio.com>",

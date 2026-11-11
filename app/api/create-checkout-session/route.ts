@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { calculatePricing } from "@/lib/pricing";
-import { getSiteUrl, getStripe } from "@/lib/stripe";
+import {
+  calculatePricingFromStoredPackagePrice,
+  getStoredPackagePriceCents,
+} from "@/lib/pricing";
+import { getSiteUrl, getStripe, verifyStripeAccount } from "@/lib/stripe";
+import {
+  createOrReuseInitialCheckoutSession,
+  recordInitialCheckoutSession,
+  requireRecordedCheckoutSession,
+} from "@/lib/payment-queries";
 import type { AddOnId, OrderRow, PackageId } from "@/types/order";
 
 type CheckoutBody = {
@@ -50,6 +58,20 @@ export async function POST(request: Request) {
 
     const order = data as OrderRow;
 
+    if (order.payment_status === "paid") {
+      return NextResponse.json(
+        { error: "This order has already been paid." },
+        { status: 409 }
+      );
+    }
+
+    if (order.order_status !== "awaiting_payment") {
+      return NextResponse.json(
+        { error: "This order is not awaiting payment." },
+        { status: 409 }
+      );
+    }
+
     if (!isPackageId(order.package_id) || !isAddOnIdArray(order.add_on_ids)) {
       return NextResponse.json(
         { error: "Order contains invalid pricing data." },
@@ -61,24 +83,39 @@ export async function POST(request: Request) {
   ? Math.max(1, order.localized_languages?.length ?? 1)
   : 1;
 
-    const trustedPricing = calculatePricing({
-      packageId: order.package_id,
-      addOnIds: order.add_on_ids,
-      localizedLanguageCount: localizedCount,
-    });
-
-    if (trustedPricing.totalCents !== order.total_cents) {
+    const storedTotalCents = order.total_cents;
+    if (!Number.isInteger(storedTotalCents) || (storedTotalCents ?? 0) < 0) {
       return NextResponse.json(
-        { error: "Order total mismatch. Please recreate the order." },
+        { error: "Order contains invalid stored pricing." },
         { status: 400 }
       );
     }
 
+    const packagePriceCents = getStoredPackagePriceCents({
+      storedTotalCents: storedTotalCents as number,
+      packageId: order.package_id,
+      addOnIds: order.add_on_ids,
+      localizedLanguageCount: localizedCount,
+    });
+    const trustedPricing = calculatePricingFromStoredPackagePrice({
+      packageId: order.package_id,
+      packageName: order.package_name || order.package_id,
+      packagePriceCents,
+      addOnIds: order.add_on_ids,
+      localizedLanguageCount: localizedCount,
+    });
+
     const stripe = getStripe();
+    await verifyStripeAccount();
     const siteUrl = getSiteUrl();
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
+    const session = await createOrReuseInitialCheckoutSession({
+      stripe,
+      recordedSessionId: order.stripe_checkout_session_id ?? null,
+      orderId: order.id,
+      totalCents: trustedPricing.totalCents,
+      params: {
+        mode: "payment",
       success_url: `${siteUrl}/payment-success?order=${order.id}`,
       cancel_url: `${siteUrl}/upload?checkout=cancelled&order=${order.id}`,
       customer_email: order.client_email ?? undefined,
@@ -89,7 +126,7 @@ export async function POST(request: Request) {
   packageId: order.package_id,
   paymentType: "initial_order",
 },
-      line_items: [
+        line_items: [
         {
           quantity: 1,
           price_data: {
@@ -116,19 +153,15 @@ export async function POST(request: Request) {
             },
           },
         })),
-      ],
+        ],
+      },
     });
 
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update({
-        stripe_checkout_session_id: session.id,
-        order_status: "awaiting_payment",
-      })
-      .eq("id", order.id);
-
-    if (updateError) {
-      console.error("orders.update stripe session failed", updateError);
+    if (session.status === "complete") {
+      return NextResponse.json(
+        { error: "This checkout has already completed." },
+        { status: 409 }
+      );
     }
 
     if (!session.url) {
@@ -137,6 +170,13 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    const recordResult = await recordInitialCheckoutSession(
+      supabase,
+      order.id,
+      session.id
+    );
+    requireRecordedCheckoutSession(recordResult);
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (error) {

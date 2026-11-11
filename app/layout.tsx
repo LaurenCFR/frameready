@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://framereadystudio.com"),
+  metadataBase: new URL("https://www.framereadystudio.com"),
   title: "FrameReady | Streaming Platform Artwork QC & Formatting",
   description:
-    "Professional artwork QC & formatting for Filmhub, Amazon, Apple TV, Netflix, Tubi and streaming platforms. Get your artwork approved the first time.",
+    "Professional artwork QC and formatting tailored to the specifications for your selected streaming delivery destinations.",
   keywords: [
     "Filmhub artwork requirements",
     "Artwork failed QC",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     title: "FrameReady",
     description:
       "Professional artwork QC & formatting for streaming platforms.",
-    url: "https://framereadystudio.com",
+    url: "https://www.framereadystudio.com",
     siteName: "FrameReady",
     images: [
       {

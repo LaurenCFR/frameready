@@ -3,8 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { getOrderDueInfo } from "@/lib/order-due";
 import {
+  DELIVERY_DESTINATIONS,
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
   type OrderStatus,
@@ -12,6 +14,7 @@ import {
   type OrderRow,
   type AdminOrder,
   type RevisionHistoryItem,
+  type DeliveryDestination,
 } from "@/types/order";
 
 type View = "home" | "dashboard" | "upload" | "review" | "admin";
@@ -75,8 +78,8 @@ const packageOptions: PackageOption[] = [
   {
     id: "essential",
     name: "🧱 Essential",
-    price: 99,
-    priceLabel: "$99",
+    price: 49,
+    priceLabel: "$49",
     description: "Perfect for indie filmmakers & first-time releases",
     features: [
       "2:3 Poster (Master artwork)",
@@ -89,13 +92,14 @@ const packageOptions: PackageOption[] = [
   {
     id: "pro",
     name: "🔥 Pro",
-    price: 199,
-    priceLabel: "$199",
-    description: "Best value — covers almost all platforms",
-    note: "Includes assets required for most major platform placements",
+    price: 99,
+    priceLabel: "$99",
+    description: "Best value for broader delivery needs",
+    note: "Tell us your destinations so we can check the relevant specifications",
     features: [
       "Everything in Essential",
-      "16:9 Textless Background (required for Amazon / Apple placements)",
+      "16:9 Textless Background (commonly requested for Amazon / Apple placements)",
+      "7:10 Portrait Artwork (additional Filmhub-recommended format)",
       "1:1 Square Artwork",
       "2:1 Banner",
       "Basic Title Treatment (transparent PNG)",
@@ -105,8 +109,8 @@ const packageOptions: PackageOption[] = [
   {
     id: "studio",
     name: "💎 Studio",
-    price: 349,
-    priceLabel: "$349",
+    price: 229,
+    priceLabel: "$229",
     description: "For serious releases + maximum visibility",
     features: [
       "Everything in Pro",
@@ -167,10 +171,7 @@ const MAX_FILE_SIZE_MB = 50;
 const MIN_DIMENSION_PX = 1400;
 const COMMON_LANGUAGES = ["Spanish", "French", "German", "Italian", "Japanese"] as const;
 
-const supabaseBrowser = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseBrowser = createSupabaseBrowserClient();
 
 const initialAdminOrders: AdminOrder[] = [
   {
@@ -315,10 +316,10 @@ function formatUsd(amount: number): string {
 }
 
 function runDevChecks(): void {
-  console.assert(calculateTotal("essential", [], 1) === 99, "Essential base pricing failed");
-  console.assert(calculateTotal("pro", ["express"], 1) === 249, "Express add-on pricing failed");
-  console.assert(calculateTotal("pro", ["localized"], 3) === 349, "Localized pricing failed");
-  console.assert(calculateTotal("studio", ["variation", "logo_pack"], 1) === 524, "Studio pricing failed");
+  console.assert(calculateTotal("essential", [], 1) === 49, "Essential base pricing failed");
+  console.assert(calculateTotal("pro", ["express"], 1) === 149, "Express add-on pricing failed");
+  console.assert(calculateTotal("pro", ["localized"], 3) === 249, "Localized pricing failed");
+  console.assert(calculateTotal("studio", ["variation", "logo_pack"], 1) === 404, "Studio pricing failed");
 }
 
 runDevChecks();
@@ -384,6 +385,9 @@ const [clientName, setClientName] = useState("");
 const [clientEmail, setClientEmail] = useState("");
 const [confirmClientEmail, setConfirmClientEmail] = useState("");
 const [clientNotes, setClientNotes] = useState("");
+const [deliveryDestinations, setDeliveryDestinations] = useState<DeliveryDestination[]>([]);
+const [deliveryDestinationOther, setDeliveryDestinationOther] = useState("");
+const [draftOrderError, setDraftOrderError] = useState("");
 const [checkoutError, setCheckoutError] = useState("");
 const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
 const [isUploadingDeliveryFiles, setIsUploadingDeliveryFiles] = useState(false);
@@ -396,6 +400,17 @@ const [paidRevisionAmount, setPaidRevisionAmount] = useState("");
 
 const selectedPackageData =
   packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
+
+const toggleDeliveryDestination = (destination: DeliveryDestination) => {
+  setDeliveryDestinations((current) => {
+    if (current.includes(destination)) {
+      return current.filter((item) => item !== destination);
+    }
+
+    if (destination === "Not sure yet") return [destination];
+    return [...current.filter((item) => item !== "Not sure yet"), destination];
+  });
+};
 
 const loadAdminOrders = async () => {
   try {
@@ -468,78 +483,18 @@ const totalPrice = useMemo(
   [selectedPackage, selectedAddOns, localizedLanguageCount]
 );
 
-const getTurnaroundHours = (order: AdminOrder) => {
-  const hasExpress =
-    order.addOns?.some((addOn) =>
-      String(addOn).toLowerCase().includes("express")
-    ) ||
-    order.packageName?.toLowerCase().includes("express");
-
-  return hasExpress ? 24 : 72;
+const getDueInfo = (order: AdminOrder) => {
+  return getOrderDueInfo({
+    status: order.status,
+    submittedAt: order.submittedAt,
+    hasExpressDelivery: hasExpressDelivery(order),
+  });
 };
 
-const getDueInfo = (order: AdminOrder) => {
-  if (
-  [
-    "completed",
-    "cancelled",
-    "archived",
-    "revision_requested",
-    "revision_in_progress",
-    "revision_ready_for_delivery",
-    "paid_revision_quote_requested",
-    "awaiting_priority_revision_payment",
-    "paid_revision_paid",
-    "paid_revision_in_progress",
-    "paid_revision_ready_for_delivery",
-  ].includes(order.status)
-) {
-  return {
-    label: order.status === "completed" ? "Delivered" : "Revision active",
-    overdue: false,
-    dueSoon: false,
-  };
-}
-  if (!order.submittedAt) {
-    return {
-      label: "Due date unknown",
-      overdue: false,
-      dueSoon: false,
-    };
-  }
-
-  const createdAt = new Date(order.submittedAt).getTime();
-
-  if (Number.isNaN(createdAt)) {
-    return {
-      label: "Due date unknown",
-      overdue: false,
-      dueSoon: false,
-    };
-  }
-
-  const dueAt =
-    createdAt + getTurnaroundHours(order) * 60 * 60 * 1000;
-
-  const diffMs = dueAt - Date.now();
-
-  const diffHours = Math.ceil(
-    Math.abs(diffMs) / (1000 * 60 * 60)
-  );
-
-  if (diffMs < 0) {
-    return {
-      label: `Overdue by ${diffHours}h`,
-      overdue: true,
-      dueSoon: false,
-    };
-  }
-
-  return {
-    label: `Due in ${diffHours}h`,
-    overdue: false,
-    dueSoon: diffHours <= 12,
-  };
+const formatAdminDate = (value?: string) => {
+  if (!value) return "Unknown";
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? "Unknown" : new Date(timestamp).toLocaleString();
 };
 
 const hasExpressDelivery = (order: AdminOrder) =>
@@ -1619,6 +1574,8 @@ const updateRes = await fetch("/api/orders", {
     clientName: clientName.trim(),
     clientEmail: clientEmail.trim(),
     notes: clientNotes.trim(),
+    deliveryDestinations,
+    deliveryDestinationOther: deliveryDestinationOther.trim(),
 
     localizedLanguages,
     localizedTitles,
@@ -1702,7 +1659,7 @@ const caseStudies = [
     ],
     result: [
       "Passed Amazon QC",
-      "Compatible with Apple TV placements",
+      "Prepared for Apple TV placement review",
       "Delivered multi-platform package",
     ],
     impact: "Ready for distribution across multiple platforms without rework.",
@@ -1758,7 +1715,7 @@ const caseStudies: CaseStudy[] = [
     ],
     result: [
       "Passed Amazon QC",
-      "Compatible with Apple TV placements",
+      "Prepared for Apple TV placement review",
       "Delivered multi-platform package",
     ],
     impact: "Ready for distribution across multiple platforms without rework.",
@@ -1793,7 +1750,7 @@ const caseStudies: CaseStudy[] = [
 </p>
 
     <div className={`mb-8 max-w-xl space-y-3 text-base md:text-lg ${theme.mutedText}`}>
-      <p>✔ Get your artwork approved the first time</p>
+      <p>✔ Prepare artwork against the specifications for your chosen destinations</p>
       <p>✔ Avoid costly rejections and delays</p>
       <p>✔ Save hours of guesswork on platform specs</p>
       <p>✔ Delivery-ready assets for Filmhub, Amazon, Netflix & more</p>
@@ -1849,7 +1806,7 @@ const caseStudies: CaseStudy[] = [
   </h2>
 
   <p className={`mt-4 text-base ${theme.softText}`}>
-    See how we turn rejected artwork into platform-approved assets.
+    See how we prepare rejected artwork for destination-specific review.
   </p>
 </div>
 
@@ -2060,8 +2017,8 @@ const caseStudies: CaseStudy[] = [
   </div>
 
   <p>
-    We deliver platform-ready artwork packages designed for Filmhub,
-    Amazon, Apple TV, Netflix, Tubi and more.
+    Tell us where you plan to deliver so we can prepare artwork against the
+    relevant specifications for Filmhub, Amazon, Apple TV, Netflix, Tubi and more.
   </p>
 </div>
 
@@ -2157,7 +2114,7 @@ const canContinueToUpload =
 
         <div className={`rounded-2xl px-4 py-3 text-sm ${theme.panel}`}>
           <p className="font-medium text-white">
-            Compatible with Filmhub, Amazon, Apple TV, Netflix, Roku, Tubi & YouTube
+            Tell us your delivery destinations so we can check the relevant artwork specifications.
           </p>
         </div>
       </div>
@@ -2304,6 +2261,48 @@ const canContinueToUpload =
                 </div>
               )}
 
+              <div className={`rounded-3xl p-6 ${theme.panel}`}>
+                <h2 className="text-xl font-semibold">Delivery destinations</h2>
+                <p className={`mt-2 text-sm ${theme.mutedText}`}>
+                  Optional. Select every destination you are considering so we
+                  can check the relevant artwork specifications. Choose “Not
+                  sure yet” if your release plan is still open.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {DELIVERY_DESTINATIONS.map((destination) => {
+                    const isSelected = deliveryDestinations.includes(destination);
+                    return (
+                      <button
+                        key={destination}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggleDeliveryDestination(destination)}
+                        className={`rounded-full border px-3 py-2 text-sm ${
+                          isSelected ? theme.selectedAddon : theme.pill
+                        }`}
+                      >
+                        {destination}
+                      </button>
+                    );
+                  })}
+                </div>
+                {deliveryDestinations.includes("Other") && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-medium text-white">
+                      Other destination
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={200}
+                      value={deliveryDestinationOther}
+                      onChange={(event) => setDeliveryDestinationOther(event.target.value)}
+                      placeholder="Name the service, distributor, or storefront"
+                      className={`w-full rounded-xl px-3 py-2 text-sm outline-none ${theme.input}`}
+                    />
+                  </div>
+                )}
+              </div>
+
               
             </div>
 
@@ -2368,6 +2367,7 @@ const canContinueToUpload =
   if (!canContinueToUpload) return;
 
   try {
+    setDraftOrderError("");
     const response = await fetch("/api/orders/draft", {
       method: "POST",
       headers: {
@@ -2383,6 +2383,8 @@ const canContinueToUpload =
             : "💎 Studio",
         addOnIds: selectedAddOns,
         addOnLabels: selectedAddOnObjects.map((a) => a.label),
+        deliveryDestinations,
+        deliveryDestinationOther: deliveryDestinationOther.trim(),
       }),
     });
 
@@ -2399,6 +2401,11 @@ const canContinueToUpload =
     // Move to upload
     navigateTo("upload");
   } catch (err) {
+    setDraftOrderError(
+      err instanceof Error
+        ? err.message
+        : "We could not save your order. Payment was not started."
+    );
     console.error("Create draft order failed", err);
   }
 }}
@@ -2410,6 +2417,11 @@ const canContinueToUpload =
 >
   Continue to Upload
 </button>
+{draftOrderError && (
+  <p className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100" role="alert">
+    {draftOrderError}
+  </p>
+)}
                 
               </div>
             </div>
@@ -3062,6 +3074,10 @@ fontFiles:
 
   
   addOns: order.add_on_labels ?? order.addOnLabels ?? order.addOns ?? [],
+  deliveryDestinations:
+    order.delivery_destinations ?? order.deliveryDestinations ?? [],
+  deliveryDestinationOther:
+    order.delivery_destination_other ?? order.deliveryDestinationOther ?? "",
 
   sourceFiles: order.uploaded_files ?? order.uploadedFiles ?? order.sourceFiles ?? [],
   deliveryFiles: order.delivery_files ?? order.deliveryFiles ?? [],
@@ -3439,7 +3455,9 @@ const handleResumeRevisionWork = async (
 
             <div className="text-left md:text-right">
               <p className="text-sm font-semibold text-white">{formatUsd(order.total)}</p>
-              <p className={`text-xs ${theme.mutedText}`}>{order.submittedAt}</p>
+              <p className={`text-xs ${theme.mutedText}`}>
+                {formatAdminDate(order.submittedAt)}
+              </p>
             </div>
           </div>
 
@@ -3507,9 +3525,7 @@ const handleResumeRevisionWork = async (
                           <p className={`text-xs ${theme.mutedText}`}>
   
   Ordered:{" "}
-{selectedAdminOrder.submittedAt
-  ? new Date(selectedAdminOrder.submittedAt).toLocaleString()
-  : "Unknown"}
+{formatAdminDate(selectedAdminOrder.submittedAt)}
 </p>
 
 {(() => {
@@ -3583,7 +3599,8 @@ const handleResumeRevisionWork = async (
   )}
 
   {/* Additional details */}
-  {(selectedAdminOrder.regionGuidelines ||
+  {((selectedAdminOrder.deliveryDestinations?.length ?? 0) > 0 ||
+  selectedAdminOrder.regionGuidelines ||
   selectedAdminOrder.packageFontInfo ||
   (selectedAdminOrder.fontFiles?.length ?? 0) > 0 ||
   selectedAdminOrder.notes) && (
@@ -3603,6 +3620,18 @@ const handleResumeRevisionWork = async (
 
     {showAdditionalDetails && (
       <div className="space-y-3 border-t border-white/6 px-4 pb-4 pt-3 text-sm">
+        {(selectedAdminOrder.deliveryDestinations?.length ?? 0) > 0 && (
+          <div>
+            <p className="mb-1 text-xs text-slate-400">Delivery destinations</p>
+            <p className="text-white">
+              {selectedAdminOrder.deliveryDestinations?.join(", ")}
+              {selectedAdminOrder.deliveryDestinations?.includes("Other") &&
+              selectedAdminOrder.deliveryDestinationOther
+                ? ` — ${selectedAdminOrder.deliveryDestinationOther}`
+                : ""}
+            </p>
+          </div>
+        )}
         {selectedAdminOrder.regionGuidelines && (
           <div>
             <p className="text-xs text-slate-400">Region guidelines</p>
