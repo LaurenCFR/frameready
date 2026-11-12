@@ -180,7 +180,7 @@ const supabaseBrowser = createSupabaseBrowserClient();
 const initialAdminOrders: AdminOrder[] = [
   {
     id: "FR-1001",
-    clientName: "Lauren Clifton",
+    clientName: "FrameReady Demo Client",
     clientEmail: "admin@framereadystudio.com",
     packageName: "🔥 Pro",
     total: 299,
