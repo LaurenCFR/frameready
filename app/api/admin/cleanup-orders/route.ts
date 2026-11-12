@@ -2,49 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { createAdminCleanupHandlers } from "@/lib/admin-cleanup-policy";
-
-async function cleanupOrders() {
-  const supabase = createSupabaseAdminClient();
-  const now = new Date();
-
-  const draftCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const completedCutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-
-  const { error: deleteDraftsError } = await supabase
-    .from("orders")
-    .delete()
-    .eq("order_status", "draft")
-    .lt("created_at", draftCutoff.toISOString());
-
-  if (deleteDraftsError) {
-    throw new Error(`Draft cleanup failed: ${deleteDraftsError.message}`);
-  }
-
-  const { error: archiveCompletedError } = await supabase
-    .from("orders")
-    .update({
-      order_status: "archived",
-      updated_at: now.toISOString(),
-    })
-    .eq("order_status", "completed")
-    .lt("updated_at", completedCutoff.toISOString());
-
-  if (archiveCompletedError) {
-    throw new Error(`Archive cleanup failed: ${archiveCompletedError.message}`);
-  }
-
-await supabase
-  .from("system_events")
-  .upsert({
-    id: "orders_cleanup_last_run",
-    value: {
-      ranAt: now.toISOString(),
-    },
-    updated_at: now.toISOString(),
-  });
-
-  return { success: true as const };
-}
+import { cleanupOrders } from "@/lib/order-cleanup";
 
 async function readCleanupStatus() {
   const supabase = createSupabaseAdminClient();

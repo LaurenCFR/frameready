@@ -39,10 +39,13 @@ Set every variable below with **Production only** scope. Do not copy these value
 | `ADMIN_EMAIL` | Production admin login email |
 | `ADMIN_PASSWORD` | Unique production admin password |
 | `ADMIN_SESSION_SECRET` | Unique long random production secret |
+| `CRON_SECRET` | Separate long random secret used only by Vercel Cron; Vercel sends it as a Bearer token |
 
 Do not define `EMAIL_TEST_RECIPIENT` in Production. Remove the obsolete `SITE_URL` variable if it exists; the application no longer reads it.
 
 The email mode variable is named **`EMAIL_DELIVERY_MODE`**. Do not set `EMAIL_MODE`: the application does not read it, and email sending will fail closed if `EMAIL_DELIVERY_MODE` is absent. `VERCEL_ENV`, `VERCEL_BRANCH_URL`, and `NODE_ENV` are platform-provided values rather than project secrets; enable Vercel's automatic system environment variables so the first two are available where required.
+
+The daily order-cleanup schedule calls `/api/cron/cleanup-orders`. Set `CRON_SECRET` before deploying this route. Vercel adds `Authorization: Bearer <CRON_SECRET>` to scheduled requests; visitors without the exact token receive `401` and cannot run cleanup. Keep this value separate from `ADMIN_SESSION_SECRET`. The Admin cleanup endpoint continues to require an Admin browser session.
 
 ## Vercel Preview variables
 
