@@ -171,6 +171,10 @@ const MAX_FILE_SIZE_MB = 50;
 const MIN_DIMENSION_PX = 1400;
 const COMMON_LANGUAGES = ["Spanish", "French", "German", "Italian", "Japanese"] as const;
 
+const isBrowserPreviewableArtwork = (file: File) =>
+  ["image/jpeg", "image/png"].includes(file.type.toLowerCase()) ||
+  /\.(jpe?g|png)$/i.test(file.name);
+
 const supabaseBrowser = createSupabaseBrowserClient();
 
 const initialAdminOrders: AdminOrder[] = [
@@ -341,6 +345,7 @@ export default function FrameReadyApp({
   const [packageFontInfo, setPackageFontInfo] = useState("");
   const [packageFontFiles, setPackageFontFiles] = useState<File[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [previewedArtworkFile, setPreviewedArtworkFile] = useState<File | null>(null);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedArtworkFiles, setUploadedArtworkFiles] = useState<UploadedFileRecord[]>([]);
@@ -400,6 +405,35 @@ const [paidRevisionAmount, setPaidRevisionAmount] = useState("");
 
 const selectedPackageData =
   packageOptions.find((pkg) => pkg.id === selectedPackage) ?? packageOptions[1];
+
+const artworkPreviewUrls = useMemo(() => {
+  const nextPreviewUrls = new Map<File, string>();
+
+  files.forEach((file) => {
+    if (isBrowserPreviewableArtwork(file)) {
+      nextPreviewUrls.set(file, URL.createObjectURL(file));
+    }
+  });
+
+  return nextPreviewUrls;
+}, [files]);
+
+useEffect(() => {
+  return () => {
+    artworkPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+  };
+}, [artworkPreviewUrls]);
+
+useEffect(() => {
+  if (!previewedArtworkFile) return;
+
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") setPreviewedArtworkFile(null);
+  };
+
+  document.addEventListener("keydown", closeOnEscape);
+  return () => document.removeEventListener("keydown", closeOnEscape);
+}, [previewedArtworkFile]);
 
 const toggleDeliveryDestination = (destination: DeliveryDestination) => {
   setDeliveryDestinations((current) => {
@@ -819,6 +853,10 @@ const deliveryLocked =
 };
 
 const removeFile = (name: string) => {
+  if (previewedArtworkFile?.name === name) {
+    setPreviewedArtworkFile(null);
+  }
+
   setFiles((prev) => prev.filter((file) => file.name !== name));
 
   setUploadedArtworkFiles((prev) =>
@@ -2262,11 +2300,12 @@ const canContinueToUpload =
               )}
 
               <div className={`rounded-3xl p-6 ${theme.panel}`}>
-                <h2 className="text-xl font-semibold">Delivery destinations</h2>
+                <h2 className="text-xl font-semibold">
+                  Where are you preparing to use this artwork?
+                </h2>
                 <p className={`mt-2 text-sm ${theme.mutedText}`}>
-                  Optional. Select every destination you are considering so we
-                  can check the relevant artwork specifications. Choose “Not
-                  sure yet” if your release plan is still open.
+                  Select all that apply. This helps us prepare the files; it does
+                  not include submission or guarantee acceptance by a platform.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {DELIVERY_DESTINATIONS.map((destination) => {
@@ -2661,7 +2700,7 @@ return;
   accept=".png,.jpg,.jpeg,.tif,.tiff,.psd,.zip,image/png,image/jpeg,image/tiff,application/zip,application/x-zip-compressed"
   onChange={handleFileUpload}
   disabled={isUploading}
-  className="mx-auto"
+  className="mx-auto block w-full max-w-full text-sm text-slate-300"
 />
 
 {isUploading && (
@@ -2706,15 +2745,33 @@ return;
                 {files.map((file) => (
                   <div
                     key={`${file.name}-${file.size}`}
-                    className="flex items-center justify-between rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-4 text-sm"
+                    className="flex flex-col items-stretch gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-5"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-400/20 font-bold text-emerald-300">
-                        ✓
-                      </div>
+                    <div className="flex min-w-0 items-center gap-4">
+                      {artworkPreviewUrls.has(file) ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewedArtworkFile(file)}
+                          className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black/30 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                          aria-label={`Preview ${file.name}`}
+                        >
+                          <img
+                            src={artworkPreviewUrls.get(file)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
+                      ) : (
+                        <div
+                          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/25 text-2xl"
+                          aria-hidden="true"
+                        >
+                          📄
+                        </div>
+                      )}
 
-                      <div>
-                        <p className="font-medium text-white">{file.name}</p>
+                      <div className="min-w-0">
+                        <p className="break-all font-medium text-white">{file.name}</p>
                         <p className="mt-1 text-xs text-emerald-200/80">
                           {(file.size / 1024 / 1024).toFixed(2)} MB · Uploaded successfully
                         </p>
@@ -2724,12 +2781,48 @@ return;
                     <button
                       type="button"
                       onClick={() => removeFile(file.name)}
-                      className="text-sm text-slate-300 underline hover:text-white"
+                      className="self-end text-sm text-slate-300 underline hover:text-white sm:self-auto"
                     >
                       Remove
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {previewedArtworkFile && artworkPreviewUrls.has(previewedArtworkFile) && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-6"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Preview of ${previewedArtworkFile.name}`}
+              onClick={() => setPreviewedArtworkFile(null)}
+            >
+              <div
+                className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-5">
+                  <p className="min-w-0 break-all text-sm font-medium text-white">
+                    {previewedArtworkFile.name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewedArtworkFile(null)}
+                    className={theme.buttonSecondary}
+                    aria-label="Close artwork preview"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-5">
+                  <img
+                    src={artworkPreviewUrls.get(previewedArtworkFile)}
+                    alt={`Preview of ${previewedArtworkFile.name}`}
+                    className="max-h-[calc(100dvh-8rem)] max-w-full object-contain"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -2945,12 +3038,7 @@ return;
 
   <div className="mt-5 space-y-3">
     {files.map((file) => {
-      const isPreviewable =
-        file.type === "image/jpeg" ||
-        file.type === "image/png" ||
-        /\.(jpg|jpeg|png)$/i.test(file.name);
-
-      const previewUrl = isPreviewable ? URL.createObjectURL(file) : null;
+      const previewUrl = artworkPreviewUrls.get(file) ?? null;
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
