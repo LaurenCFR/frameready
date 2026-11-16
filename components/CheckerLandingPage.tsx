@@ -6,6 +6,8 @@ type CheckerLandingPageProps = {
   description: string;
   platformName: string;
   bullets: string[];
+  guideHref?: string;
+  guideLabel?: string;
 };
 
 const platformExamples = [
@@ -21,6 +23,8 @@ export default function CheckerLandingPage({
   description,
   platformName,
   bullets,
+  guideHref,
+  guideLabel,
 }: CheckerLandingPageProps) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.16),_transparent_28%),linear-gradient(180deg,_#050608_0%,_#0b0d14_42%,_#050608_100%)] text-white">
@@ -54,6 +58,14 @@ export default function CheckerLandingPage({
           >
             Get a Free Review
           </Link>
+          {guideHref && guideLabel ? (
+            <Link
+              href={guideHref}
+              className="inline-flex justify-center rounded-xl border border-white/15 bg-white/[0.05] px-6 py-3 text-sm font-semibold text-white transition hover:border-cyan-300/40 hover:bg-white/[0.09]"
+            >
+              {guideLabel}
+            </Link>
+          ) : null}
         </div>
       </section>
 

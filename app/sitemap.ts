@@ -13,6 +13,10 @@ export default function sitemap() {
       lastModified: new Date(),
     },
     {
+      url: "https://www.framereadystudio.com/guides/filmhub-artwork-sizes",
+      lastModified: new Date(),
+    },
+    {
       url: "https://www.framereadystudio.com/amazon-prime-artwork-checker",
       lastModified: new Date(),
     },
