@@ -42,7 +42,7 @@ export default function FilmhubArtworkSizesGuide() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-indigo-300">
             Filmhub artwork guide
           </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
             What artwork sizes do I need for Filmhub?
           </h1>
         </header>
