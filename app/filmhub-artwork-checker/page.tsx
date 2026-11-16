@@ -20,6 +20,8 @@ export default function FilmhubArtworkCheckerPage() {
         "Spot missing recommended artwork formats",
         "Request a free professional review from FrameReady",
       ]}
+      guideHref="/guides/filmhub-artwork-sizes"
+      guideLabel="Read the Filmhub artwork sizes guide"
     />
   );
 }
