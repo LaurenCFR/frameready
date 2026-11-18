@@ -124,6 +124,9 @@ export default function AmazonPrimeVideoArtworkSizesGuide() {
             <p>
               Seasons use <strong className="text-white">4:3 Box Art at 2560 × 1920 pixels</strong>, rather than the movie’s 3:4 Box Art. Amazon also lists separate textless episodic images for episodes. Optional enhanced assets, such as Carousel Hero Art, Title Art, and variants, have their own specifications. Check the relevant Amazon documentation and your delivery partner’s requirements for these cases.
             </p>
+            <p>
+              See our <Link href="/guides/amazon-prime-video-series-enhanced-artwork" className="font-semibold text-cyan-300 underline underline-offset-4">Prime Video series and enhanced artwork guide</Link> for the season, episode and additional artwork sizes.
+            </p>
           </section>
 
           <aside className="rounded-2xl border border-indigo-400/20 bg-indigo-500/10 p-5 sm:p-6">
