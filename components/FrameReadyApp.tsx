@@ -1849,25 +1849,25 @@ const caseStudies: CaseStudy[] = [
     <div className="grid gap-4 md:grid-cols-2">
       <div className={`rounded-2xl border border-white/10 p-5 ${theme.panelStrong}`}>
         <h3 className="text-lg font-semibold text-white">Filmhub</h3>
-        <div className="mt-3 flex flex-col items-start gap-3 text-sm">
-          <Link href="/guides/filmhub-artwork-sizes" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+        <ul className="mt-3 list-disc space-y-3 pl-5 text-sm marker:text-cyan-300">
+          <li><Link href="/guides/filmhub-artwork-sizes" className="font-medium text-cyan-300 hover:text-cyan-200 hover:underline focus-visible:underline">
             What artwork sizes do I need for Filmhub?
-          </Link>
-          <Link href="/guides/filmhub-artwork-qc-issues" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+          </Link></li>
+          <li><Link href="/guides/filmhub-artwork-qc-issues" className="font-medium text-cyan-300 hover:text-cyan-200 hover:underline focus-visible:underline">
             Why does Filmhub flag my artwork? QC issues and fixes
-          </Link>
-        </div>
+          </Link></li>
+        </ul>
       </div>
       <div className={`rounded-2xl border border-white/10 p-5 ${theme.panelStrong}`}>
         <h3 className="text-lg font-semibold text-white">Amazon Prime Video</h3>
-        <div className="mt-3 flex flex-col items-start gap-3 text-sm">
-          <Link href="/guides/amazon-prime-video-artwork-sizes" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+        <ul className="mt-3 list-disc space-y-3 pl-5 text-sm marker:text-cyan-300">
+          <li><Link href="/guides/amazon-prime-video-artwork-sizes" className="font-medium text-cyan-300 hover:text-cyan-200 hover:underline focus-visible:underline">
             What artwork sizes do I need for Prime Video movies?
-          </Link>
-          <Link href="/guides/amazon-prime-video-series-enhanced-artwork" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+          </Link></li>
+          <li><Link href="/guides/amazon-prime-video-series-enhanced-artwork" className="font-medium text-cyan-300 hover:text-cyan-200 hover:underline focus-visible:underline">
             Prime Video series and enhanced artwork
-          </Link>
-        </div>
+          </Link></li>
+        </ul>
       </div>
     </div>
   </section>
