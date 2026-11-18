@@ -140,7 +140,7 @@ export default function FilmhubArtworkSizesGuide() {
                 </thead>
                 <tbody>
                   {[
-                    ["16:9 title treatment", "4320 × 1300 px"],
+                    ["16:9 title treatment", "4320 × 2430 px"],
                     ["Square 1:1", "600 × 600 px"],
                     ["Portrait 7:10", "900 × 1286 px"],
                     ["Landscape 4:3", "1920 × 1440 px"],
