@@ -29,6 +29,10 @@ export default function sitemap() {
       lastModified: new Date(),
     },
     {
+      url: "https://www.framereadystudio.com/guides/amazon-prime-video-series-enhanced-artwork",
+      lastModified: new Date(),
+    },
+    {
       url: "https://www.framereadystudio.com/streaming-artwork-checker",
       lastModified: new Date(),
     },
