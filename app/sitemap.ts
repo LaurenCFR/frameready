@@ -17,6 +17,10 @@ export default function sitemap() {
       lastModified: new Date(),
     },
     {
+      url: "https://www.framereadystudio.com/guides/filmhub-artwork-qc-issues",
+      lastModified: new Date(),
+    },
+    {
       url: "https://www.framereadystudio.com/amazon-prime-artwork-checker",
       lastModified: new Date(),
     },

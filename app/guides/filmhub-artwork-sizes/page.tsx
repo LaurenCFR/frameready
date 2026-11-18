@@ -266,6 +266,13 @@ export default function FilmhubArtworkSizesGuide() {
               files for your own production work, but export the finished images
               in an accepted format.
             </p>
+            <p>
+              Received a warning? Read our{" "}
+              <Link href="/guides/filmhub-artwork-qc-issues" className="font-semibold text-cyan-300 underline underline-offset-4">
+                guide to common Filmhub artwork QC issues and fixes
+              </Link>
+              .
+            </p>
           </section>
 
           <section className="space-y-4">
