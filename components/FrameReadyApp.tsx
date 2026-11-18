@@ -1832,6 +1832,46 @@ const caseStudies: CaseStudy[] = [
     </div>
   </section>
 
+  {/* Artwork guides */}
+  <section aria-labelledby="artwork-guides-title" className="mx-auto max-w-6xl px-6 pb-14 pt-4">
+    <div className="mb-6 max-w-2xl">
+      <p className={`text-xs uppercase tracking-[0.22em] ${theme.accentLine}`}>
+        Free resources
+      </p>
+      <h2 id="artwork-guides-title" className="mt-2 text-2xl font-bold text-white md:text-3xl">
+        Artwork guides
+      </h2>
+      <p className={`mt-2 text-sm leading-6 ${theme.softText}`}>
+        Find the right artwork sizes and common checks before you prepare files for delivery.
+      </p>
+    </div>
+
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className={`rounded-2xl border border-white/10 p-5 ${theme.panelStrong}`}>
+        <h3 className="text-lg font-semibold text-white">Filmhub</h3>
+        <div className="mt-3 flex flex-col items-start gap-3 text-sm">
+          <Link href="/guides/filmhub-artwork-sizes" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+            What artwork sizes do I need for Filmhub?
+          </Link>
+          <Link href="/guides/filmhub-artwork-qc-issues" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+            Why does Filmhub flag my artwork? QC issues and fixes
+          </Link>
+        </div>
+      </div>
+      <div className={`rounded-2xl border border-white/10 p-5 ${theme.panelStrong}`}>
+        <h3 className="text-lg font-semibold text-white">Amazon Prime Video</h3>
+        <div className="mt-3 flex flex-col items-start gap-3 text-sm">
+          <Link href="/guides/amazon-prime-video-artwork-sizes" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+            What artwork sizes do I need for Prime Video movies?
+          </Link>
+          <Link href="/guides/amazon-prime-video-series-enhanced-artwork" className="font-medium text-cyan-300 underline underline-offset-4 hover:text-cyan-200">
+            Prime Video series and enhanced artwork
+          </Link>
+        </div>
+      </div>
+    </div>
+  </section>
+
   {/* Case Studies */}
   <section className="mx-auto max-w-6xl px-6 pb-14 pt-6">
     <div className="mb-12 mx-auto max-w-3xl text-center">
