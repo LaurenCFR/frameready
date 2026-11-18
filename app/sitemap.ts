@@ -25,6 +25,10 @@ export default function sitemap() {
       lastModified: new Date(),
     },
     {
+      url: "https://www.framereadystudio.com/guides/amazon-prime-video-artwork-sizes",
+      lastModified: new Date(),
+    },
+    {
       url: "https://www.framereadystudio.com/streaming-artwork-checker",
       lastModified: new Date(),
     },
